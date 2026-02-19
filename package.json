@@ -4,7 +4,9 @@
   "description": "API for Vesting Vault",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node test-unit.js",
+    "test:integration": "node test-pagination.js"
   },
   "dependencies": {
     "cors": "^2.8.6",
