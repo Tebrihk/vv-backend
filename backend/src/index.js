@@ -1,11 +1,15 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const http = require('http');
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Create HTTP server for GraphQL subscriptions
+const httpServer = http.createServer(app);
 
 // Middleware
 app.use(cors());
@@ -312,8 +316,29 @@ const startServer = async () => {
     await sequelize.sync();
     console.log('Database synchronized successfully.');
     
-    app.listen(PORT, () => {
+    // Initialize GraphQL Server
+    let graphQLServer = null;
+    try {
+      // Import GraphQL server (using require for CommonJS compatibility)
+      const { createGraphQLServer } = require('./graphql/server');
+      graphQLServer = await createGraphQLServer(app);
+      console.log('GraphQL Server initialized successfully.');
+      
+      const serverInfo = graphQLServer.getServerInfo();
+      console.log(`GraphQL Playground available at: ${serverInfo.playgroundUrl}`);
+      console.log(`GraphQL Subscriptions available at: ${serverInfo.subscriptionEndpoint}`);
+    } catch (graphqlError) {
+      console.error('Failed to initialize GraphQL Server:', graphqlError);
+      console.log('Continuing with REST API only...');
+    }
+    
+    // Start the HTTP server
+    httpServer.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
+      console.log(`REST API available at: http://localhost:${PORT}`);
+      if (graphQLServer) {
+        console.log(`GraphQL API available at: http://localhost:${PORT}/graphql`);
+      }
     });
   } catch (error) {
     console.error('Unable to start server:', error);
