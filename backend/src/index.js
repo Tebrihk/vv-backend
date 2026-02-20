@@ -11,8 +11,12 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Database connection
+// Database connection and models
 const { sequelize } = require('./database/connection');
+const models = require('./models');
+
+// Services
+const indexingService = require('./services/indexingService');
 
 // Routes
 app.get('/', (req, res) => {
@@ -21,6 +25,70 @@ app.get('/', (req, res) => {
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// API Routes for claims and indexing
+app.post('/api/claims', async (req, res) => {
+  try {
+    const claim = await indexingService.processClaim(req.body);
+    res.status(201).json({ success: true, data: claim });
+  } catch (error) {
+    console.error('Error processing claim:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+app.post('/api/claims/batch', async (req, res) => {
+  try {
+    const result = await indexingService.processBatchClaims(req.body.claims);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error processing batch claims:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+app.post('/api/claims/backfill-prices', async (req, res) => {
+  try {
+    const processedCount = await indexingService.backfillMissingPrices();
+    res.json({ 
+      success: true, 
+      message: `Backfilled prices for ${processedCount} claims` 
+    });
+  } catch (error) {
+    console.error('Error backfilling prices:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+app.get('/api/claims/:userAddress/realized-gains', async (req, res) => {
+  try {
+    const { userAddress } = req.params;
+    const { startDate, endDate } = req.query;
+    
+    const gains = await indexingService.getRealizedGains(
+      userAddress, 
+      startDate ? new Date(startDate) : null,
+      endDate ? new Date(endDate) : null
+    );
+    
+    res.json({ success: true, data: gains });
+  } catch (error) {
+    console.error('Error calculating realized gains:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
 });
 
 // Start server
