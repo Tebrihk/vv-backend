@@ -33,6 +33,13 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed development setup and guid
 - **Cache**: Redis for session management and caching
 - **Containerization**: Docker and Docker Compose for development environment
 
+## Features
+
+- **Vesting Schedules**: Flexible vesting with cliff periods and multiple top-ups
+- **Admin Management**: Secure admin key management and audit logging
+- **Price Tracking**: Historical price tracking for tax reporting
+- **Delegate Claiming**: Allow beneficiaries to set delegates to claim on their behalf ([docs](./DELEGATE_CLAIMING.md))
+
 ## License
 
 MIT

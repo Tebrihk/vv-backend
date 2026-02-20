@@ -18,6 +18,7 @@ const models = require('./models');
 // Services
 const indexingService = require('./services/indexingService');
 const adminService = require('./services/adminService');
+const vestingService = require('./services/vestingService');
 
 // Routes
 app.get('/', (req, res) => {
@@ -287,6 +288,49 @@ app.post('/api/indexing/release', async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error processing release event:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Delegate Management Routes
+app.post('/api/delegate/set', async (req, res) => {
+  try {
+    const { vaultId, ownerAddress, delegateAddress } = req.body;
+    const result = await vestingService.setDelegate(vaultId, ownerAddress, delegateAddress);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error setting delegate:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+app.post('/api/delegate/claim', async (req, res) => {
+  try {
+    const { delegateAddress, vaultAddress, releaseAmount } = req.body;
+    const result = await vestingService.claimAsDelegate(delegateAddress, vaultAddress, releaseAmount);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error in delegate claim:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+app.get('/api/delegate/:vaultAddress/info', async (req, res) => {
+  try {
+    const { vaultAddress } = req.params;
+    const result = await vestingService.getVaultWithSubSchedules(vaultAddress);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error fetching delegate info:', error);
     res.status(500).json({ 
       success: false, 
       error: error.message 

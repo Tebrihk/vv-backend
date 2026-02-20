@@ -18,6 +18,11 @@ const Vault = sequelize.define('Vault', {
     allowNull: false,
     comment: 'The owner of the vault',
   },
+  delegate_address: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'The delegate address that can claim on behalf of the owner',
+  },
   token_address: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -69,6 +74,9 @@ const Vault = sequelize.define('Vault', {
     },
     {
       fields: ['owner_address'],
+    },
+    {
+      fields: ['delegate_address'],
     },
     {
       fields: ['token_address'],

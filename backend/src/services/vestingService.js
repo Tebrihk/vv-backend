@@ -204,6 +204,43 @@ class VestingService {
     return Math.max(0, releasable);
   }
 
+  async setDelegate(vaultId, ownerAddress, delegateAddress) {
+    try {
+      if (!this.isValidAddress(ownerAddress)) {
+        throw new Error('Invalid owner address');
+      }
+      if (!this.isValidAddress(delegateAddress)) {
+        throw new Error('Invalid delegate address');
+      }
+
+      const vault = await Vault.findOne({
+        where: { id: vaultId, owner_address: ownerAddress, is_active: true },
+      });
+
+      if (!vault) {
+        throw new Error('Vault not found or access denied');
+      }
+
+      await vault.update({
+        delegate_address: delegateAddress,
+      });
+
+      auditLogger.logAction(ownerAddress, 'SET_DELEGATE', vault.vault_address, {
+        delegateAddress,
+        vaultId,
+      });
+
+      return {
+        success: true,
+        message: 'Delegate set successfully',
+        vault,
+      };
+    } catch (error) {
+      console.error('Error in setDelegate:', error);
+      throw error;
+    }
+  }
+
   async releaseTokens(adminAddress, vaultAddress, releaseAmount, userAddress) {
     try {
       if (!this.isValidAddress(adminAddress)) {
@@ -258,6 +295,69 @@ class VestingService {
       };
     } catch (error) {
       console.error('Error in releaseTokens:', error);
+      throw error;
+    }
+  }
+
+  async claimAsDelegate(delegateAddress, vaultAddress, releaseAmount) {
+    try {
+      if (!this.isValidAddress(delegateAddress)) {
+        throw new Error('Invalid delegate address');
+      }
+      if (!this.isValidAddress(vaultAddress)) {
+        throw new Error('Invalid vault address');
+      }
+      if (releaseAmount <= 0) {
+        throw new Error('Release amount must be positive');
+      }
+
+      const vault = await Vault.findOne({
+        where: { vault_address: vaultAddress, delegate_address: delegateAddress, is_active: true },
+      });
+
+      if (!vault) {
+        throw new Error('Vault not found or delegate not authorized');
+      }
+
+      const releasableResult = await this.calculateReleasableAmount(vaultAddress);
+      if (releasableResult.totalReleasable < releaseAmount) {
+        throw new Error(`Insufficient releasable amount. Available: ${releasableResult.totalReleasable}, Requested: ${releaseAmount}`);
+      }
+
+      const result = await this.getVaultWithSubSchedules(vaultAddress);
+      let remainingToRelease = releaseAmount;
+
+      for (const subSchedule of result.vault.subSchedules) {
+        if (remainingToRelease <= 0) break;
+
+        const releasable = this.calculateSubScheduleReleasable(subSchedule);
+        if (releasable <= 0) continue;
+
+        const releaseFromThis = Math.min(remainingToRelease, releasable);
+        
+        await subSchedule.update({
+          amount_released: parseFloat(subSchedule.amount_released) + releaseFromThis,
+        });
+
+        remainingToRelease -= releaseFromThis;
+      }
+
+      auditLogger.logAction(delegateAddress, 'DELEGATE_CLAIM', vaultAddress, {
+        releaseAmount,
+        ownerAddress: vault.owner_address,
+        remainingToRelease: 0,
+      });
+
+      return {
+        success: true,
+        message: 'Tokens claimed successfully by delegate',
+        vaultAddress,
+        releaseAmount,
+        ownerAddress: vault.owner_address,
+        delegateAddress,
+      };
+    } catch (error) {
+      console.error('Error in claimAsDelegate:', error);
       throw error;
     }
   }
