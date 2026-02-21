@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../database/connection');
 
-const SubSchedule = sequelize.define('SubSchedule', {
+const Beneficiary = sequelize.define('Beneficiary', {
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
@@ -16,14 +16,23 @@ const SubSchedule = sequelize.define('SubSchedule', {
     },
     onUpdate: 'CASCADE',
     onDelete: 'CASCADE',
-
   },
-  top_up_amount: {
+  address: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: 'Beneficiary wallet address',
+  },
+  total_allocated: {
     type: DataTypes.DECIMAL(36, 18),
     allowNull: false,
-    comment: 'Amount of tokens added in this top-up',
+    defaultValue: 0,
+    comment: 'Total tokens allocated to this beneficiary',
   },
-
+  total_withdrawn: {
+    type: DataTypes.DECIMAL(36, 18),
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Total tokens withdrawn by this beneficiary',
   },
   created_at: {
     type: DataTypes.DATE,
@@ -34,18 +43,19 @@ const SubSchedule = sequelize.define('SubSchedule', {
     defaultValue: DataTypes.NOW,
   },
 }, {
-  tableName: 'sub_schedules',
+  tableName: 'beneficiaries',
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
   indexes: [
     {
-      fields: ['vault_id'],
+      fields: ['vault_id', 'address'],
+      unique: true,
     },
     {
-
+      fields: ['address'],
     },
   ],
 });
 
-module.exports = SubSchedule;
+module.exports = Beneficiary;

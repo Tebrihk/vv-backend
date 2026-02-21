@@ -1,11 +1,15 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const http = require('http');
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Create HTTP server for GraphQL subscriptions
+const httpServer = http.createServer(app);
 
 // Middleware
 app.use(cors());
@@ -207,14 +211,7 @@ app.get('/api/admin/pending-transfers', async (req, res) => {
   }
 });
 
-// Vesting Management Routes
-app.post('/api/vault/top-up', async (req, res) => {
-  try {
-    const { adminAddress, vaultAddress, topUpConfig } = req.body;
-    const result = await adminService.topUpVault(adminAddress, vaultAddress, topUpConfig);
-    res.json({ success: true, data: result });
-  } catch (error) {
-    console.error('Error topping up vault:', error);
+
     res.status(500).json({ 
       success: false, 
       error: error.message 
@@ -222,13 +219,7 @@ app.post('/api/vault/top-up', async (req, res) => {
   }
 });
 
-app.get('/api/vault/:vaultAddress/details', async (req, res) => {
-  try {
-    const { vaultAddress } = req.params;
-    const result = await adminService.getVaultDetails(vaultAddress);
-    res.json({ success: true, data: result });
-  } catch (error) {
-    console.error('Error fetching vault details:', error);
+
     res.status(500).json({ 
       success: false, 
       error: error.message 
@@ -236,17 +227,7 @@ app.get('/api/vault/:vaultAddress/details', async (req, res) => {
   }
 });
 
-app.get('/api/vault/:vaultAddress/releasable', async (req, res) => {
-  try {
-    const { vaultAddress } = req.params;
-    const { asOfDate } = req.query;
-    const result = await adminService.calculateReleasableAmount(
-      vaultAddress, 
-      asOfDate ? new Date(asOfDate) : new Date()
-    );
-    res.json({ success: true, data: result });
-  } catch (error) {
-    console.error('Error calculating releasable amount:', error);
+
     res.status(500).json({ 
       success: false, 
       error: error.message 
@@ -254,13 +235,7 @@ app.get('/api/vault/:vaultAddress/releasable', async (req, res) => {
   }
 });
 
-app.post('/api/vault/release', async (req, res) => {
-  try {
-    const { adminAddress, vaultAddress, releaseAmount, userAddress } = req.body;
-    const result = await adminService.releaseTokens(adminAddress, vaultAddress, releaseAmount, userAddress);
-    res.json({ success: true, data: result });
-  } catch (error) {
-    console.error('Error releasing tokens:', error);
+<
     res.status(500).json({ 
       success: false, 
       error: error.message 
@@ -268,13 +243,7 @@ app.post('/api/vault/release', async (req, res) => {
   }
 });
 
-// Indexing Service Routes for Vesting Events
-app.post('/api/indexing/top-up', async (req, res) => {
-  try {
-    const result = await indexingService.processTopUpEvent(req.body);
-    res.status(201).json({ success: true, data: result });
-  } catch (error) {
-    console.error('Error processing top-up event:', error);
+
     res.status(500).json({ 
       success: false, 
       error: error.message 
@@ -282,55 +251,7 @@ app.post('/api/indexing/top-up', async (req, res) => {
   }
 });
 
-app.post('/api/indexing/release', async (req, res) => {
-  try {
-    const result = await indexingService.processReleaseEvent(req.body);
-    res.json({ success: true, data: result });
-  } catch (error) {
-    console.error('Error processing release event:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
 
-// Delegate Management Routes
-app.post('/api/delegate/set', async (req, res) => {
-  try {
-    const { vaultId, ownerAddress, delegateAddress } = req.body;
-    const result = await vestingService.setDelegate(vaultId, ownerAddress, delegateAddress);
-    res.json({ success: true, data: result });
-  } catch (error) {
-    console.error('Error setting delegate:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
-app.post('/api/delegate/claim', async (req, res) => {
-  try {
-    const { delegateAddress, vaultAddress, releaseAmount } = req.body;
-    const result = await vestingService.claimAsDelegate(delegateAddress, vaultAddress, releaseAmount);
-    res.json({ success: true, data: result });
-  } catch (error) {
-    console.error('Error in delegate claim:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
-app.get('/api/delegate/:vaultAddress/info', async (req, res) => {
-  try {
-    const { vaultAddress } = req.params;
-    const result = await vestingService.getVaultWithSubSchedules(vaultAddress);
-    res.json({ success: true, data: result });
-  } catch (error) {
-    console.error('Error fetching delegate info:', error);
     res.status(500).json({ 
       success: false, 
       error: error.message 
@@ -347,8 +268,29 @@ const startServer = async () => {
     await sequelize.sync();
     console.log('Database synchronized successfully.');
     
-    app.listen(PORT, () => {
+    // Initialize GraphQL Server
+    let graphQLServer = null;
+    try {
+      // Import GraphQL server (using require for CommonJS compatibility)
+      const { createGraphQLServer } = require('./graphql/server');
+      graphQLServer = await createGraphQLServer(app);
+      console.log('GraphQL Server initialized successfully.');
+      
+      const serverInfo = graphQLServer.getServerInfo();
+      console.log(`GraphQL Playground available at: ${serverInfo.playgroundUrl}`);
+      console.log(`GraphQL Subscriptions available at: ${serverInfo.subscriptionEndpoint}`);
+    } catch (graphqlError) {
+      console.error('Failed to initialize GraphQL Server:', graphqlError);
+      console.log('Continuing with REST API only...');
+    }
+    
+    // Start the HTTP server
+    httpServer.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
+      console.log(`REST API available at: http://localhost:${PORT}`);
+      if (graphQLServer) {
+        console.log(`GraphQL API available at: http://localhost:${PORT}/graphql`);
+      }
     });
   } catch (error) {
     console.error('Unable to start server:', error);
