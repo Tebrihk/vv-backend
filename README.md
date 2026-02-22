@@ -1,6 +1,21 @@
-# Vesting Vault
+# Verinode Vesting Vault System
 
-A blockchain-based vesting vault system for managing token distributions and vesting schedules.
+A blockchain-based vesting vault system for managing token distributions and vesting schedules with cliff support for top-ups.
+
+## API Documentation
+
+The API is fully documented with Swagger UI. After starting the server, access the documentation at:
+
+```
+http://localhost:3000/api-docs
+```
+
+The documentation includes:
+- Interactive API explorer for all endpoints
+- Detailed parameter descriptions
+- Example requests and responses
+- Authentication information
+- Model definitions
 
 ## Quick Start
 

@@ -3,6 +3,10 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
 
+// Import swagger documentation
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpecs = require('./swagger/options');
+
 dotenv.config();
 
 const app = express();
@@ -14,6 +18,9 @@ const httpServer = http.createServer(app);
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Swagger UI middleware
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
 
 // Database connection and models
 const { sequelize } = require('./database/connection');
