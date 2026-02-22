@@ -22,6 +22,14 @@ const Beneficiary = sequelize.define('Beneficiary', {
     allowNull: false,
     comment: 'Beneficiary wallet address',
   },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'Beneficiary email address',
+    validate: {
+      isEmail: true,
+    },
+  },
   total_allocated: {
     type: DataTypes.DECIMAL(36, 18),
     allowNull: false,

@@ -34,6 +34,7 @@ const discordBotService = require('./services/discordBotService');
 const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
+const notificationService = require('./services/notificationService');
 
 // Routes
 app.get('/', (req, res) => {
@@ -277,7 +278,7 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log('Database connection established successfully.');
     
-    await sequelize.sync();
+    await sequelize.sync({ alter: true });
     console.log('Database synchronized successfully.');
     
     // Initialize Redis Cache
@@ -315,6 +316,13 @@ const startServer = async () => {
     } catch (discordError) {
       console.error('Failed to initialize Discord Bot:', discordError);
       console.log('Continuing without Discord bot...');
+    }
+    
+    // Initialize Notification Service (Cron Job)
+    try {
+      notificationService.start();
+    } catch (notificationError) {
+      console.error('Failed to start Notification Service:', notificationError);
     }
     
     // Start the HTTP server
