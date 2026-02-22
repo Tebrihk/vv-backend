@@ -31,6 +31,7 @@ const indexingService = require('./services/indexingService');
 const adminService = require('./services/adminService');
 const vestingService = require('./services/vestingService');
 const discordBotService = require('./services/discordBotService');
+const cacheService = require('./services/cacheService');
 
 // Routes
 app.get('/', (req, res) => {
@@ -227,6 +228,19 @@ const startServer = async () => {
     
     await sequelize.sync();
     console.log('Database synchronized successfully.');
+    
+    // Initialize Redis Cache
+    try {
+      await cacheService.connect();
+      if (cacheService.isReady()) {
+        console.log('Redis cache connected successfully.');
+      } else {
+        console.log('Redis cache not available, continuing without caching...');
+      }
+    } catch (cacheError) {
+      console.error('Failed to connect to Redis:', cacheError);
+      console.log('Continuing without Redis cache...');
+    }
     
     // Initialize GraphQL Server
     let graphQLServer = null;
