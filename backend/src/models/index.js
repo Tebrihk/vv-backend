@@ -12,7 +12,7 @@ const models = {
   sequelize,
 };
 
-// Setup associations if needed in the future
+// Setup associations
 Object.keys(models).forEach((modelName) => {
   if (models[modelName].associate) {
     models[modelName].associate(models);
