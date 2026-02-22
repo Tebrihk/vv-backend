@@ -1,5 +1,6 @@
 const { ClaimsHistory, Vault, SubSchedule } = require('../models');
 const priceService = require('./priceService');
+const slackWebhookService = require('./slackWebhookService');
 
 class IndexingService {
   async processClaim(claimData) {
@@ -31,6 +32,15 @@ class IndexingService {
       });
 
       console.log(`Processed claim ${transaction_hash} with price $${price_at_claim_usd}`);
+      
+      // Check for large claim and send Slack alert
+      try {
+        await slackWebhookService.processClaimAlert(claim.toJSON());
+      } catch (alertError) {
+        console.error('Error processing claim alert:', alertError);
+        // Don't throw - alert failure shouldn't fail the claim processing
+      }
+      
       return claim;
     } catch (error) {
       console.error('Error processing claim:', error);

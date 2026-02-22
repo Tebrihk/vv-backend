@@ -1,4 +1,5 @@
-import { models } from '../../models';
+const models = require('../../models');
+const cacheService = require('../../services/cacheService');
 
 export const vaultResolver = {
   Query: {
@@ -26,6 +27,17 @@ export const vaultResolver = {
 
     vaults: async (_: any, { ownerAddress, first = 50, after }: { ownerAddress?: string, first?: number, after?: string }) => {
       try {
+        // Check cache if ownerAddress is provided (user-specific query)
+        if (ownerAddress) {
+          const cacheKey = cacheService.getUserVaultsKey(ownerAddress);
+          const cachedVaults = await cacheService.get(cacheKey);
+          
+          if (cachedVaults) {
+            console.log(`Cache hit for user vaults: ${ownerAddress}`);
+            return cachedVaults;
+          }
+        }
+
         const whereClause = ownerAddress ? { owner_address: ownerAddress } : {};
         const offset = after ? parseInt(after) : 0;
 
@@ -45,6 +57,14 @@ export const vaultResolver = {
           offset,
           order: [['created_at', 'DESC']]
         });
+
+        // Cache the result if ownerAddress is provided
+        if (ownerAddress) {
+          const cacheKey = cacheService.getUserVaultsKey(ownerAddress);
+          await cacheService.set(cacheKey, vaults);
+          console.log(`Cached user vaults for: ${ownerAddress}`);
+        }
+
         return vaults;
       } catch (error) {
         console.error('Error fetching vaults:', error);
@@ -104,6 +124,12 @@ export const vaultResolver = {
           owner_address: input.ownerAddress,
           total_amount: input.totalAmount
         });
+
+        // Invalidate cache for the owner
+        if (input.ownerAddress) {
+          await cacheService.invalidateUserVaults(input.ownerAddress);
+          console.log(`Invalidated cache for user vaults: ${input.ownerAddress}`);
+        }
 
         return vault;
       } catch (error) {
