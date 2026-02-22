@@ -30,6 +30,8 @@ const models = require('./models');
 const indexingService = require('./services/indexingService');
 const adminService = require('./services/adminService');
 const vestingService = require('./services/vestingService');
+const discordBotService = require('./services/discordBotService');
+const cacheService = require('./services/cacheService');
 
 // Routes
 app.get('/', (req, res) => {
@@ -218,54 +220,6 @@ app.get('/api/admin/pending-transfers', async (req, res) => {
   }
 });
 
-
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
-
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
-
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
-<
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
-
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
-
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
 // Start server
 const startServer = async () => {
   try {
@@ -274,6 +228,19 @@ const startServer = async () => {
     
     await sequelize.sync();
     console.log('Database synchronized successfully.');
+    
+    // Initialize Redis Cache
+    try {
+      await cacheService.connect();
+      if (cacheService.isReady()) {
+        console.log('Redis cache connected successfully.');
+      } else {
+        console.log('Redis cache not available, continuing without caching...');
+      }
+    } catch (cacheError) {
+      console.error('Failed to connect to Redis:', cacheError);
+      console.log('Continuing without Redis cache...');
+    }
     
     // Initialize GraphQL Server
     let graphQLServer = null;
@@ -289,6 +256,14 @@ const startServer = async () => {
     } catch (graphqlError) {
       console.error('Failed to initialize GraphQL Server:', graphqlError);
       console.log('Continuing with REST API only...');
+    }
+    
+    // Initialize Discord Bot
+    try {
+      await discordBotService.start();
+    } catch (discordError) {
+      console.error('Failed to initialize Discord Bot:', discordError);
+      console.log('Continuing without Discord bot...');
     }
     
     // Start the HTTP server
