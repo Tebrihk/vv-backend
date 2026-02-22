@@ -1,4 +1,4 @@
-const { Vault, SubSchedule, Beneficiary } = require('../models');
+const { Vault, SubSchedule, Beneficiary, Organization } = require('../models');
 
 // Setup model associations
 Vault.hasMany(SubSchedule, {
@@ -34,6 +34,18 @@ Vault.associate = function(models) {
     foreignKey: 'vault_id',
     as: 'beneficiaries',
   });
+
+  Vault.belongsTo(models.Organization, {
+    foreignKey: 'org_id',
+    as: 'organization',
+  });
+};
+
+Organization.associate = function(models) {
+  Organization.hasMany(models.Vault, {
+    foreignKey: 'org_id',
+    as: 'vaults',
+  });
 };
 
 SubSchedule.associate = function(models) {
@@ -54,4 +66,5 @@ module.exports = {
   Vault,
   SubSchedule,
   Beneficiary,
+  Organization,
 };

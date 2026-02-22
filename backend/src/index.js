@@ -33,6 +33,7 @@ const vestingService = require('./services/vestingService');
 const discordBotService = require('./services/discordBotService');
 const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
+const vaultExportService = require('./services/vaultExportService');
 
 // Routes
 app.get('/', (req, res) => {
@@ -240,6 +241,33 @@ app.get('/api/stats/tvl', async (req, res) => {
       success: false,
       error: error.message
     });
+  }
+});
+
+// Vault Export Routes
+app.get('/api/vault/:id/export', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Set response headers for CSV download
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="vault-${id}-export-${new Date().toISOString().split('T')[0]}.csv"`);
+    
+    // Stream the CSV data
+    await vaultExportService.streamVaultAsCSV(id, res);
+  } catch (error) {
+    console.error('Error exporting vault:', error);
+    
+    // If headers haven't been sent yet, send JSON error response
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    } else {
+      // If streaming already started, destroy the stream
+      res.destroy(error);
+    }
   }
 });
 
