@@ -979,4 +979,89 @@
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 
+/**
+ * @swagger
+ * /api/org/{address}:
+ *   get:
+ *     summary: Get organization info by admin address
+ *     description: Retrieves organization metadata (logo, website, discord) by admin address
+ *     tags: [Organization]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Admin address to retrieve organization info for
+ *     responses:
+ *       200:
+ *         description: Organization info retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       description: Organization ID
+ *                     name:
+ *                       type: string
+ *                       description: Organization name
+ *                     logo_url:
+ *                       type: string
+ *                       description: URL to organization logo
+ *                     website_url:
+ *                       type: string
+ *                       description: URL to organization website
+ *                     discord_url:
+ *                       type: string
+ *                       description: URL to organization Discord
+ *                     admin_address:
+ *                       type: string
+ *                       description: Admin address linked to this organization
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *                       description: Creation timestamp
+ *                     updated_at:
+ *                       type: string
+ *                       format: date-time
+ *                       description: Last update timestamp
+ *             example:
+ *               success: true
+ *               data:
+ *                 id: "550e8400-e29b-41d4-a716-446655440000"
+ *                 name: "Acme Corp"
+ *                 logo_url: "https://acme.com/logo.png"
+ *                 website_url: "https://acme.com"
+ *                 discord_url: "https://discord.gg/acme"
+ *                 admin_address: "0x1234567890123456789012345678901234567890"
+ *                 created_at: "2024-01-01T00:00:00.000Z"
+ *                 updated_at: "2024-01-01T00:00:00.000Z"
+ *       400:
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Organization not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+
 module.exports = {};

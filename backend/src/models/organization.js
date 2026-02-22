@@ -1,41 +1,32 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../database/connection');
 
-const Vault = sequelize.define('Vault', {
+const Organization = sequelize.define('Organization', {
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true,
   },
-  address: {
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  logo_url: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  website_url: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  discord_url: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  admin_address: {
     type: DataTypes.STRING,
     allowNull: false,
     unique: true,
-  },
-  name: {
-    type: DataTypes.STRING,
-    allowNull: true,
-  },
-  token_address: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  owner_address: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  total_amount: {
-    type: DataTypes.DECIMAL(36, 18),
-    allowNull: false,
-    defaultValue: 0,
-  },
-  org_id: {
-    type: DataTypes.UUID,
-    allowNull: true,
-    references: {
-      model: 'organizations',
-      key: 'id'
-    }
   },
   created_at: {
     type: DataTypes.DATE,
@@ -46,30 +37,24 @@ const Vault = sequelize.define('Vault', {
     defaultValue: DataTypes.NOW,
   },
 }, {
-  tableName: 'vaults',
+  tableName: 'organizations',
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
   indexes: [
     {
-      fields: ['address'],
+      fields: ['admin_address'],
       unique: true,
     },
-    {
-      fields: ['owner_address'],
-    },
-    {
-      fields: ['org_id'],
-    }
   ],
 });
 
 // Add association method
-Vault.associate = function(models) {
-  Vault.belongsTo(models.Organization, {
+Organization.associate = function(models) {
+  Organization.hasMany(models.Vault, {
     foreignKey: 'org_id',
-    as: 'organization'
+    as: 'vaults'
   });
 };
 
-module.exports = Vault;
+module.exports = Organization;
