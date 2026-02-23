@@ -61,7 +61,7 @@ const discordBotService = require('./services/discordBotService');
 const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
-const notificationService = require('./services/notificationService');
+
 
 app.get('/', (req, res) => {
   res.json({ message: 'Vesting Vault API is running!' });
