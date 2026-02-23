@@ -52,6 +52,7 @@ const discordBotService = require('./services/discordBotService');
 const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
+const { rateLimitExport } = require('./util/ratelimit.utils');
 
 // Routes
 app.get('/', (req, res) => {
@@ -264,8 +265,7 @@ app.get('/api/stats/tvl', async (req, res) => {
   }
 });
 
-// Vault Export Routes
-app.get('/api/vault/:id/export', async (req, res) => {
+app.get('/api/vault/:id/export', rateLimitExport, async (req, res) => {
   try {
     const { id } = req.params;
     
