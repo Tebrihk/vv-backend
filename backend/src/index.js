@@ -42,6 +42,7 @@ const discordBotService = require('./services/discordBotService');
 const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
+const calendarService = require('./services/calendarService');
 
 app.get('/', (req, res) => {
   res.json({ message: 'Vesting Vault API is running!' });
@@ -199,6 +200,18 @@ app.get('/api/stats/tvl', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching TVL stats:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Calendar Route
+app.get('/api/user/:address/calendar', async (req, res) => {
+  try {
+    const { address } = req.params;
+    const unlocks = await calendarService.getUpcomingUnlocks(address);
+    res.json({ success: true, data: unlocks });
+  } catch (error) {
+    console.error('Error fetching calendar:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
