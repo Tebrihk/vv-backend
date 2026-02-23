@@ -22,6 +22,7 @@ const SubSchedule = sequelize.define('SubSchedule', {
     allowNull: false,
     comment: 'Amount of tokens added in this top-up',
   },
+  created_at: {
 
     type: DataTypes.DATE,
     allowNull: false,

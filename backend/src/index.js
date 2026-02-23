@@ -274,6 +274,14 @@ const startServer = async () => {
       console.log('Continuing without Discord bot...');
     }
 
+    // Initialize Monthly Report Job
+    try {
+      monthlyReportJob.start();
+    } catch (jobError) {
+      console.error('Failed to initialize Monthly Report Job:', jobError);
+    }
+    
+    // Start the HTTP server
     httpServer.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
       console.log(`REST API available at: http://localhost:${PORT}`);
