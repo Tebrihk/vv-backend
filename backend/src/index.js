@@ -1,6 +1,4 @@
 const express = require('express');
-const { ClaimGateway } = require('./websocket/claim.gateway');
-const { RedisIoAdapter } = require('./websocket/redis.adapter');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
@@ -357,10 +355,7 @@ const startServer = async () => {
       if (graphQLServer) {
         console.log(`GraphQL API available at: http://localhost:${PORT}/graphql`);
       }
-      // Initialize WebSocket Gateway with Redis adapter
-      const redisIoAdapter = new RedisIoAdapter(httpServer);
-      const claimGateway = new ClaimGateway();
-      claimGateway.server = redisIoAdapter.createIOServer(PORT, { transports: ['websocket'] });
+      
     });
   } catch (error) {
     console.error('Unable to start server:', error);

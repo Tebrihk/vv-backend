@@ -16,14 +16,11 @@ const SubSchedule = sequelize.define('SubSchedule', {
     },
     onUpdate: 'CASCADE',
     onDelete: 'CASCADE',
-
   },
   top_up_amount: {
     type: DataTypes.DECIMAL(36, 18),
     allowNull: false,
     comment: 'Amount of tokens added in this top-up',
-  },
-
   },
   created_at: {
     type: DataTypes.DATE,
@@ -41,9 +38,6 @@ const SubSchedule = sequelize.define('SubSchedule', {
   indexes: [
     {
       fields: ['vault_id'],
-    },
-    {
-
     },
   ],
 });
