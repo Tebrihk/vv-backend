@@ -27,8 +27,7 @@ const SubSchedule = sequelize.define('SubSchedule', {
     allowNull: false,
   },
   cliff_duration: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
+
   },
   cliff_date: {
     type: DataTypes.DATE,
