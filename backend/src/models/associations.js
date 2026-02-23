@@ -1,4 +1,4 @@
-const { Vault, SubSchedule, Beneficiary, Organization } = require('../models');
+const { Vault, SubSchedule, Beneficiary, Organization, Notification } = require('../models');
 
 // Setup model associations
 Vault.hasMany(SubSchedule, {
@@ -21,6 +21,27 @@ Vault.hasMany(Beneficiary, {
 Beneficiary.belongsTo(Vault, {
   foreignKey: 'vault_id',
   as: 'vault',
+});
+
+Beneficiary.hasMany(Notification, {
+  foreignKey: 'beneficiary_id',
+  as: 'notifications',
+  onDelete: 'CASCADE',
+});
+
+Notification.belongsTo(Beneficiary, {
+  foreignKey: 'beneficiary_id',
+  as: 'beneficiary',
+});
+
+Notification.belongsTo(Vault, {
+  foreignKey: 'vault_id',
+  as: 'vault',
+});
+
+Notification.belongsTo(SubSchedule, {
+  foreignKey: 'sub_schedule_id',
+  as: 'subSchedule',
 });
 
 // Add associate methods to models
@@ -60,6 +81,28 @@ Beneficiary.associate = function(models) {
     foreignKey: 'vault_id',
     as: 'vault',
   });
+
+  Beneficiary.hasMany(models.Notification, {
+    foreignKey: 'beneficiary_id',
+    as: 'notifications',
+  });
+};
+
+Notification.associate = function(models) {
+  Notification.belongsTo(models.Beneficiary, {
+    foreignKey: 'beneficiary_id',
+    as: 'beneficiary',
+  });
+
+  Notification.belongsTo(models.Vault, {
+    foreignKey: 'vault_id',
+    as: 'vault',
+  });
+
+  Notification.belongsTo(models.SubSchedule, {
+    foreignKey: 'sub_schedule_id',
+    as: 'subSchedule',
+  });
 };
 
 module.exports = {
@@ -67,4 +110,5 @@ module.exports = {
   SubSchedule,
   Beneficiary,
   Organization,
+  Notification,
 };

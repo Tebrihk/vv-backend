@@ -16,22 +16,40 @@ const SubSchedule = sequelize.define('SubSchedule', {
     },
     onUpdate: 'CASCADE',
     onDelete: 'CASCADE',
-
   },
   top_up_amount: {
     type: DataTypes.DECIMAL(36, 18),
     allowNull: false,
     comment: 'Amount of tokens added in this top-up',
   },
+  created_at: {
+
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  cliff_duration: {
 
   },
-  created_at: {
+  cliff_date: {
     type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
+    allowNull: true,
   },
-  updated_at: {
+  vesting_start_date: {
     type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW,
+    allowNull: false,
+  },
+  vesting_duration: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  amount_released: {
+    type: DataTypes.DECIMAL(36, 18),
+    allowNull: false,
+    defaultValue: 0,
+  },
+  is_active: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
   },
 }, {
   tableName: 'sub_schedules',
@@ -42,9 +60,7 @@ const SubSchedule = sequelize.define('SubSchedule', {
     {
       fields: ['vault_id'],
     },
-    {
 
-    },
   ],
 });
 
