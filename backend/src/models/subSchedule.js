@@ -22,12 +22,7 @@ const SubSchedule = sequelize.define('SubSchedule', {
     allowNull: false,
     comment: 'Amount of tokens added in this top-up',
   },
-  top_up_transaction_hash: {
-    type: DataTypes.STRING(66),
-    allowNull: false,
-    unique: true,
-  },
-  top_up_timestamp: {
+
     type: DataTypes.DATE,
     allowNull: false,
   },
@@ -65,13 +60,7 @@ const SubSchedule = sequelize.define('SubSchedule', {
     {
       fields: ['vault_id'],
     },
-    {
-      fields: ['top_up_transaction_hash'],
-      unique: true,
-    },
-    {
-      fields: ['cliff_date'],
-    },
+
   ],
 });
 

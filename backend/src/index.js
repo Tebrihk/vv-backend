@@ -25,6 +25,27 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
 // Database connection and models
 const { sequelize } = require('./database/connection');
 const models = require('./models');
+const { OrganizationWebhook } = models;
+// Register webhook URL for organization
+const { isAdminOfOrg } = require('./graphql/middleware/auth');
+// Register webhook URL for organization with admin/org check
+app.post('/api/admin/webhooks', async (req, res) => {
+  try {
+    const { organization_id, webhook_url, admin_address } = req.body;
+    if (!organization_id || !webhook_url || !admin_address) {
+      return res.status(400).json({ success: false, error: 'organization_id, webhook_url, and admin_address are required' });
+    }
+    const isAdmin = await isAdminOfOrg(admin_address, organization_id);
+    if (!isAdmin) {
+      return res.status(403).json({ success: false, error: 'Forbidden: admin_address does not belong to organization' });
+    }
+    const webhook = await OrganizationWebhook.create({ organization_id, webhook_url });
+    res.status(201).json({ success: true, data: webhook });
+  } catch (error) {
+    console.error('Error registering webhook:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // Services
 const indexingService = require('./services/indexingService');
@@ -246,27 +267,37 @@ app.get('/api/stats/tvl', async (req, res) => {
 });
 
 // Vault Export Routes
+// Vault export with admin/org check
 app.get('/api/vault/:id/export', async (req, res) => {
   try {
     const { id } = req.params;
-    
+    const { admin_address } = req.query;
+    if (!admin_address) {
+      return res.status(400).json({ success: false, error: 'admin_address is required' });
+    }
+    // Get vault and org_id
+    const vault = await require('./models').Vault.findOne({ where: { id } });
+    if (!vault) {
+      return res.status(404).json({ success: false, error: 'Vault not found' });
+    }
+    const orgId = vault.org_id;
+    const isAdmin = await isAdminOfOrg(admin_address, orgId);
+    if (!isAdmin) {
+      return res.status(403).json({ success: false, error: 'Forbidden: admin_address does not belong to organization' });
+    }
     // Set response headers for CSV download
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="vault-${id}-export-${new Date().toISOString().split('T')[0]}.csv"`);
-    
     // Stream the CSV data
     await vaultExportService.streamVaultAsCSV(id, res);
   } catch (error) {
     console.error('Error exporting vault:', error);
-    
-    // If headers haven't been sent yet, send JSON error response
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
         error: error.message
       });
     } else {
-      // If streaming already started, destroy the stream
       res.destroy(error);
     }
   }
@@ -332,6 +363,7 @@ const startServer = async () => {
       if (graphQLServer) {
         console.log(`GraphQL API available at: http://localhost:${PORT}/graphql`);
       }
+      
     });
   } catch (error) {
     console.error('Unable to start server:', error);

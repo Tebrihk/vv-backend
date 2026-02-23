@@ -3,6 +3,9 @@ const priceService = require('./priceService');
 const slackWebhookService = require('./slackWebhookService');
 const tvlService = require('./tvlService');
 
+const EventEmitter = require('events');
+const claimEventEmitter = new EventEmitter();
+
 class IndexingService {
   async processClaim(claimData) {
     try {
@@ -50,6 +53,29 @@ class IndexingService {
         // Don't throw - TVL update failure shouldn't fail claim processing
       }
       
+      // Emit internal claim event for WebSocket gateway
+      claimEventEmitter.emit('claim', claim.toJSON());
+
+      // Fire webhook POST for DAOs, but only if admin_address matches organization_id
+      const { OrganizationWebhook } = require('../models');
+      const { isAdminOfOrg } = require('../graphql/middleware/auth');
+      const axios = require('axios');
+      if (claim.organization_id && claim.admin_address) {
+        const isAdmin = await isAdminOfOrg(claim.admin_address, claim.organization_id);
+        if (isAdmin) {
+          const webhooks = await OrganizationWebhook.findAll({ where: { organization_id: claim.organization_id } });
+          for (const webhook of webhooks) {
+            try {
+              await axios.post(webhook.webhook_url, claim.toJSON());
+              console.log(`Webhook fired: ${webhook.webhook_url}`);
+            } catch (err) {
+              console.error(`Webhook failed: ${webhook.webhook_url}`, err);
+            }
+          }
+        } else {
+          console.warn('Webhook not fired: admin_address does not match organization_id');
+        }
+      }
       return claim;
     } catch (error) {
       console.error('Error processing claim:', error);
@@ -293,4 +319,8 @@ class IndexingService {
   }
 }
 
-module.exports = new IndexingService();
+module.exports = {
+  IndexingService,
+  claimEventEmitter,
+  instance: new IndexingService()
+};
