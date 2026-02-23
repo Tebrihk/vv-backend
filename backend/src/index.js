@@ -261,6 +261,21 @@ app.get('/api/stats/tvl', async (req, res) => {
   }
 });
 
+// Vault Projection Route
+app.get('/api/vault/:id/projection', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const projection = await vestingService.getVaultProjection(id);
+    res.json({ success: true, data: projection });
+  } catch (error) {
+    console.error('Error fetching vault projection:', error);
+    res.status(error.message === 'Vault not found' ? 404 : 500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 // Vault Export Routes
 app.get('/api/vault/:id/export', async (req, res) => {
   try {
