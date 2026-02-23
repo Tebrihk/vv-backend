@@ -56,19 +56,24 @@ class IndexingService {
       // Emit internal claim event for WebSocket gateway
       claimEventEmitter.emit('claim', claim.toJSON());
 
-      // Fire webhook POST for DAOs
+      // Fire webhook POST for DAOs, but only if admin_address matches organization_id
       const { OrganizationWebhook } = require('../models');
+      const { isAdminOfOrg } = require('../graphql/middleware/auth');
       const axios = require('axios');
-      // Find webhooks for the organization (if vault has organization_id)
-      if (claim.organization_id) {
-        const webhooks = await OrganizationWebhook.findAll({ where: { organization_id: claim.organization_id } });
-        for (const webhook of webhooks) {
-          try {
-            await axios.post(webhook.webhook_url, claim.toJSON());
-            console.log(`Webhook fired: ${webhook.webhook_url}`);
-          } catch (err) {
-            console.error(`Webhook failed: ${webhook.webhook_url}`, err);
+      if (claim.organization_id && claim.admin_address) {
+        const isAdmin = await isAdminOfOrg(claim.admin_address, claim.organization_id);
+        if (isAdmin) {
+          const webhooks = await OrganizationWebhook.findAll({ where: { organization_id: claim.organization_id } });
+          for (const webhook of webhooks) {
+            try {
+              await axios.post(webhook.webhook_url, claim.toJSON());
+              console.log(`Webhook fired: ${webhook.webhook_url}`);
+            } catch (err) {
+              console.error(`Webhook failed: ${webhook.webhook_url}`, err);
+            }
           }
+        } else {
+          console.warn('Webhook not fired: admin_address does not match organization_id');
         }
       }
       return claim;

@@ -4,10 +4,16 @@ const tvlService = require('../../services/tvlService');
 
 export const vaultResolver = {
   Query: {
-    vault: async (_: any, { address }: { address: string }) => {
+    vault: async (_: any, { address, orgId, adminAddress }: { address: string, orgId: string, adminAddress: string }) => {
       try {
+        // Enforce org/admin check
+        const { isAdminOfOrg } = require('../middleware/auth');
+        const isAdmin = await isAdminOfOrg(adminAddress, orgId);
+        if (!isAdmin) {
+          throw new Error('Access denied: admin does not belong to organization.');
+        }
         const vault = await models.Vault.findOne({
-          where: { address },
+          where: { address, org_id: orgId },
           include: [
             {
               model: models.Beneficiary,
@@ -26,24 +32,17 @@ export const vaultResolver = {
       }
     },
 
-    vaults: async (_: any, { ownerAddress, first = 50, after }: { ownerAddress?: string, first?: number, after?: string }) => {
+    vaults: async (_: any, { orgId, adminAddress, first = 50, after }: { orgId: string, adminAddress: string, first?: number, after?: string }) => {
       try {
-        // Check cache if ownerAddress is provided (user-specific query)
-        if (ownerAddress) {
-          const cacheKey = cacheService.getUserVaultsKey(ownerAddress);
-          const cachedVaults = await cacheService.get(cacheKey);
-          
-          if (cachedVaults) {
-            console.log(`Cache hit for user vaults: ${ownerAddress}`);
-            return cachedVaults;
-          }
+        // Enforce org/admin check
+        const { isAdminOfOrg } = require('../middleware/auth');
+        const isAdmin = await isAdminOfOrg(adminAddress, orgId);
+        if (!isAdmin) {
+          throw new Error('Access denied: admin does not belong to organization.');
         }
-
-        const whereClause = ownerAddress ? { owner_address: ownerAddress } : {};
         const offset = after ? parseInt(after) : 0;
-
         const vaults = await models.Vault.findAll({
-          where: whereClause,
+          where: { org_id: orgId },
           include: [
             {
               model: models.Beneficiary,
@@ -58,14 +57,6 @@ export const vaultResolver = {
           offset,
           order: [['created_at', 'DESC']]
         });
-
-        // Cache the result if ownerAddress is provided
-        if (ownerAddress) {
-          const cacheKey = cacheService.getUserVaultsKey(ownerAddress);
-          await cacheService.set(cacheKey, vaults);
-          console.log(`Cached user vaults for: ${ownerAddress}`);
-        }
-
         return vaults;
       } catch (error) {
         console.error('Error fetching vaults:', error);
