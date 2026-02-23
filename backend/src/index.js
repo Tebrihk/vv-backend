@@ -4,6 +4,7 @@ const { RedisIoAdapter } = require('./websocket/redis.adapter');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
+const checkApiKey = require('./middleware/checkApiKey');
 
 // Import swagger documentation
 const swaggerUi = require('swagger-ui-express');
@@ -51,7 +52,7 @@ const discordBotService = require('./services/discordBotService');
 const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
-const monthlyReportJob = require('./jobs/monthlyReportJob');
+const { rateLimitExport } = require('./util/ratelimit.utils');
 
 // Routes
 app.get('/', (req, res) => {
@@ -127,6 +128,8 @@ app.get('/api/claims/:userAddress/realized-gains', async (req, res) => {
 });
 
 // Admin Routes
+app.use('/api/admin', checkApiKey);
+
 app.post('/api/admin/revoke', async (req, res) => {
   try {
     const { adminAddress, targetVault, reason } = req.body;
@@ -262,8 +265,7 @@ app.get('/api/stats/tvl', async (req, res) => {
   }
 });
 
-// Vault Export Routes
-app.get('/api/vault/:id/export', async (req, res) => {
+app.get('/api/vault/:id/export', rateLimitExport, async (req, res) => {
   try {
     const { id } = req.params;
     

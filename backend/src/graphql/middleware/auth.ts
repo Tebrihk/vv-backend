@@ -1,3 +1,17 @@
+// Utility to check if admin_address belongs to org_id
+export const isAdminOfOrg = async (adminAddress: string, orgId: string) => {
+  if (!adminAddress || !orgId) return false;
+  try {
+    const { models } = require('../../models');
+    const org = await models.Organization.findOne({
+      where: { id: orgId, admin_address: adminAddress }
+    });
+    return !!org;
+  } catch (err) {
+    console.error('Error in isAdminOfOrg:', err);
+    return false;
+  }
+};
 import { GraphQLResolveInfo } from 'graphql';
 
 export interface Context {
