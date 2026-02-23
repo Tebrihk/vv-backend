@@ -4,6 +4,7 @@ const { RedisIoAdapter } = require('./websocket/redis.adapter');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
+const checkApiKey = require('./middleware/checkApiKey');
 
 // Import swagger documentation
 const swaggerUi = require('swagger-ui-express');
@@ -51,6 +52,7 @@ const discordBotService = require('./services/discordBotService');
 const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
+const { rateLimitExport } = require('./util/ratelimit.utils');
 
 // Routes
 app.get('/', (req, res) => {
@@ -126,6 +128,8 @@ app.get('/api/claims/:userAddress/realized-gains', async (req, res) => {
 });
 
 // Admin Routes
+app.use('/api/admin', checkApiKey);
+
 app.post('/api/admin/revoke', async (req, res) => {
   try {
     const { adminAddress, targetVault, reason } = req.body;
@@ -261,23 +265,7 @@ app.get('/api/stats/tvl', async (req, res) => {
   }
 });
 
-// Vault Projection Route
-app.get('/api/vault/:id/projection', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const projection = await vestingService.getVaultProjection(id);
-    res.json({ success: true, data: projection });
-  } catch (error) {
-    console.error('Error fetching vault projection:', error);
-    res.status(error.message === 'Vault not found' ? 404 : 500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
-// Vault Export Routes
-app.get('/api/vault/:id/export', async (req, res) => {
+app.get('/api/vault/:id/export', rateLimitExport, async (req, res) => {
   try {
     const { id } = req.params;
     
