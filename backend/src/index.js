@@ -51,6 +51,7 @@ const discordBotService = require('./services/discordBotService');
 const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
+const monthlyReportJob = require('./jobs/monthlyReportJob');
 
 // Routes
 app.get('/', (req, res) => {
@@ -332,6 +333,13 @@ const startServer = async () => {
     } catch (discordError) {
       console.error('Failed to initialize Discord Bot:', discordError);
       console.log('Continuing without Discord bot...');
+    }
+
+    // Initialize Monthly Report Job
+    try {
+      monthlyReportJob.start();
+    } catch (jobError) {
+      console.error('Failed to initialize Monthly Report Job:', jobError);
     }
     
     // Start the HTTP server
