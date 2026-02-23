@@ -43,6 +43,29 @@ describe('GraphQL Resolvers', () => {
   });
 
   describe('Vault Resolver', () => {
+        it('should deny access when admin does not belong to org', async () => {
+          // Simulate Organization A's admin trying to access Organization B's vault
+          const mockOrgA = { id: 'orgA', admin_address: '0xadminA' };
+          const mockOrgB = { id: 'orgB', admin_address: '0xadminB' };
+          // Mock isAdminOfOrg to return false
+          jest.mock('../middleware/auth', () => ({
+            isAdminOfOrg: jest.fn().mockResolvedValue(false)
+          }));
+          await expect(vaultResolver.Query.vault(null, { address: '0xvaultB', orgId: mockOrgB.id, adminAddress: mockOrgA.admin_address }))
+            .rejects.toThrow('Access denied: admin does not belong to organization.');
+        });
+
+        it('should allow access when admin belongs to org', async () => {
+          const mockOrgA = { id: 'orgA', admin_address: '0xadminA' };
+          const mockVault = { id: '1', address: '0xvaultA', org_id: 'orgA', beneficiaries: [], subSchedules: [] };
+          // Mock isAdminOfOrg to return true
+          jest.mock('../middleware/auth', () => ({
+            isAdminOfOrg: jest.fn().mockResolvedValue(true)
+          }));
+          (models.Vault.findOne as jest.Mock).mockResolvedValue(mockVault);
+          const result = await vaultResolver.Query.vault(null, { address: '0xvaultA', orgId: mockOrgA.id, adminAddress: mockOrgA.admin_address });
+          expect(result).toEqual(mockVault);
+        });
     describe('Query.vault', () => {
       it('should fetch a vault by address', async () => {
         const mockVault = {
