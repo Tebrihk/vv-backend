@@ -77,17 +77,16 @@ class IndexingService {
           console.warn('Webhook not fired: admin_address does not match organization_id');
         }
       }
-    }
       return claim;
-  } catch(error) {
-    console.error('Error processing claim:', error);
-    Sentry.captureException(error, {
-      tags: { operation: 'processClaim' },
-      extra: { claimData }
-    });
-    throw error;
+    } catch (error) {
+      console.error('Error processing claim:', error);
+      Sentry.captureException(error, {
+        tags: { operation: 'processClaim' },
+        extra: { claimData }
+      });
+      throw error;
+    }
   }
-}
 
   async processBatchClaims(claimsData) {
   const results = [];
