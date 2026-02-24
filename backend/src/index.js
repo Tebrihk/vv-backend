@@ -83,6 +83,7 @@ const discordBotService = require('./services/discordBotService');
 const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
+const notificationService = require('./services/notificationService');
 
 
 app.get('/', (req, res) => {
@@ -134,10 +135,6 @@ app.post('/api/claims/backfill-prices', claimRateLimiter, async (req, res) => {
       success: false,
       error: error.message
     });
-    res.json({ success: true, message: `Backfilled prices for ${processedCount} claims` });
-  } catch (error) {
-    console.error('Error backfilling prices:', error);
-    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -159,10 +156,6 @@ app.get('/api/claims/:userAddress/realized-gains', async (req, res) => {
       success: false,
       error: error.message
     });
-    res.json({ success: true, data: gains });
-  } catch (error) {
-    console.error('Error calculating realized gains:', error);
-    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -304,7 +297,104 @@ app.get('/api/stats/tvl', async (req, res) => {
   }
 });
 
+// Notification endpoints
+app.post('/api/notifications/register-device', async (req, res) => {
+  try {
+    const { userAddress, deviceToken, platform, appVersion } = req.body;
 
+    if (!userAddress || !deviceToken || !platform) {
+      return res.status(400).json({
+        success: false,
+        error: 'userAddress, deviceToken, and platform are required'
+      });
+    }
+
+    if (!['ios', 'android', 'web'].includes(platform)) {
+      return res.status(400).json({
+        success: false,
+        error: 'platform must be one of: ios, android, web'
+      });
+    }
+
+    const deviceTokenRecord = await notificationService.registerDeviceToken(
+      userAddress,
+      deviceToken,
+      platform,
+      appVersion
+    );
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: deviceTokenRecord.id,
+        userAddress: deviceTokenRecord.user_address,
+        platform: deviceTokenRecord.platform,
+        registeredAt: deviceTokenRecord.created_at
+      }
+    });
+  } catch (error) {
+    console.error('Error registering device token:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.delete('/api/notifications/unregister-device', async (req, res) => {
+  try {
+    const { deviceToken } = req.body;
+
+    if (!deviceToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'deviceToken is required'
+      });
+    }
+
+    const success = await notificationService.unregisterDeviceToken(deviceToken);
+
+    res.json({
+      success: true,
+      data: { unregistered: success }
+    });
+  } catch (error) {
+    console.error('Error unregistering device token:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/notifications/devices/:userAddress', async (req, res) => {
+  try {
+    const { userAddress } = req.params;
+
+    const deviceTokens = await notificationService.getUserDeviceTokens(userAddress);
+
+    res.json({
+      success: true,
+      data: deviceTokens.map(token => ({
+        id: token.id,
+        platform: token.platform,
+        appVersion: token.app_version,
+        lastUsedAt: token.last_used_at,
+        registeredAt: token.created_at
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching user device tokens:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/vaults/:id/export', async (req, res) => {
+  try {
+    const { id } = req.params;
     await vaultExportService.streamVaultAsCSV(id, res);
   } catch (error) {
     console.error('Error exporting vault:', error);
@@ -373,6 +463,15 @@ const startServer = async () => {
       monthlyReportJob.start();
     } catch (jobError) {
       console.error('Failed to initialize Monthly Report Job:', jobError);
+    }
+
+    // Initialize Notification Service (includes cliff notification cron job)
+    try {
+      notificationService.start();
+      console.log('Notification service started successfully.');
+    } catch (notificationError) {
+      console.error('Failed to initialize Notification Service:', notificationError);
+      console.log('Continuing without notification cron job...');
     }
     
     // Start the HTTP server
