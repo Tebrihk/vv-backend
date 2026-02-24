@@ -2,7 +2,17 @@ const axios = require('axios');
 
 class PriceService {
   constructor() {
-    this.baseUrl = 'https://api.coingecko.com/api/v3';
+    this.provider = process.env.PRICE_API_PROVIDER || 'coingecko';
+    this.coinGeckoApiKey = process.env.COINGECKO_API_KEY;
+    this.coinMarketCapApiKey = process.env.COINMARKETCAP_API_KEY;
+    
+    // Configure base URLs based on API keys
+    this.coinGeckoBaseUrl = this.coinGeckoApiKey 
+      ? 'https://pro-api.coingecko.com/api/v3'
+      : 'https://api.coingecko.com/api/v3';
+    
+    this.coinMarketCapBaseUrl = 'https://pro-api.coinmarketcap.com/v1';
+    
     this.cache = new Map();
     this.cacheTimeout = 60000; // 1 minute cache
   }
@@ -21,15 +31,11 @@ class PriceService {
     try {
       let price;
       
-      if (timestamp) {
-        // Get historical price at specific timestamp
-        const date = new Date(timestamp);
-        const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD format
-        
-        price = await this.getHistoricalPrice(tokenAddress, dateStr);
+      if (this.provider === 'coinmarketcap' && this.coinMarketCapApiKey) {
+        price = await this.getCoinMarketCapPrice(tokenAddress, timestamp);
       } else {
-        // Get latest price
-        price = await this.getLatestPrice(tokenAddress);
+        // Default to CoinGecko (free or pro)
+        price = await this.getCoinGeckoPrice(tokenAddress, timestamp);
       }
 
       // Cache the result
@@ -41,20 +47,57 @@ class PriceService {
       return price;
     } catch (error) {
       console.error(`Error fetching price for token ${tokenAddress}:`, error.message);
+      
+      // Fallback to alternative provider if primary fails
+      if (this.provider === 'coinmarketcap') {
+        console.log('Falling back to CoinGecko...');
+        try {
+          const price = await this.getCoinGeckoPrice(tokenAddress, timestamp);
+          this.cache.set(cacheKey, { price, timestamp: Date.now() });
+          return price;
+        } catch (fallbackError) {
+          console.error('Fallback also failed:', fallbackError.message);
+        }
+      }
+      
       throw error;
     }
   }
 
-  async getLatestPrice(tokenAddress) {
+  async getCoinGeckoPrice(tokenAddress, timestamp = null) {
+    if (timestamp) {
+      const date = new Date(timestamp);
+      const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+      return await this.getCoinGeckoHistoricalPrice(tokenAddress, dateStr);
+    } else {
+      return await this.getCoinGeckoLatestPrice(tokenAddress);
+    }
+  }
+
+  async getCoinMarketCapPrice(tokenAddress, timestamp = null) {
+    if (timestamp) {
+      return await this.getCoinMarketCapHistoricalPrice(tokenAddress, timestamp);
+    } else {
+      return await this.getCoinMarketCapLatestPrice(tokenAddress);
+    }
+  }
+
+  async getCoinGeckoLatestPrice(tokenAddress) {
     // For ERC-20 tokens, we need to find the CoinGecko ID first
     const coinId = await this.getCoinGeckoId(tokenAddress);
     
-    const response = await axios.get(`${this.baseUrl}/simple/price`, {
+    const headers = {};
+    if (this.coinGeckoApiKey) {
+      headers['x-cg-pro-api-key'] = this.coinGeckoApiKey;
+    }
+    
+    const response = await axios.get(`${this.coinGeckoBaseUrl}/simple/price`, {
       params: {
         ids: coinId,
         vs_currencies: 'usd',
         precision: 18
       },
+      headers,
       timeout: 10000
     });
 
@@ -65,15 +108,21 @@ class PriceService {
     return response.data[coinId].usd;
   }
 
-  async getHistoricalPrice(tokenAddress, date) {
+  async getCoinGeckoHistoricalPrice(tokenAddress, date) {
     // For ERC-20 tokens, we need to find the CoinGecko ID first
     const coinId = await this.getCoinGeckoId(tokenAddress);
     
-    const response = await axios.get(`${this.baseUrl}/coins/${coinId}/history`, {
+    const headers = {};
+    if (this.coinGeckoApiKey) {
+      headers['x-cg-pro-api-key'] = this.coinGeckoApiKey;
+    }
+    
+    const response = await axios.get(`${this.coinGeckoBaseUrl}/coins/${coinId}/history`, {
       params: {
         date,
         localization: false
       },
+      headers,
       timeout: 10000
     });
 
@@ -94,9 +143,15 @@ class PriceService {
       }
     }
 
+    const headers = {};
+    if (this.coinGeckoApiKey) {
+      headers['x-cg-pro-api-key'] = this.coinGeckoApiKey;
+    }
+
     try {
       // Search for the token by contract address
-      const response = await axios.get(`${this.baseUrl}/coins/ethereum/contract/${tokenAddress.toLowerCase()}`, {
+      const response = await axios.get(`${this.coinGeckoBaseUrl}/coins/ethereum/contract/${tokenAddress.toLowerCase()}`, {
+        headers,
         timeout: 10000
       });
 
@@ -112,10 +167,11 @@ class PriceService {
     } catch (error) {
       // If direct contract lookup fails, try searching by address
       try {
-        const searchResponse = await axios.get(`${this.baseUrl}/search`, {
+        const searchResponse = await axios.get(`${this.coinGeckoBaseUrl}/search`, {
           params: {
             query: tokenAddress
           },
+          headers,
           timeout: 10000
         });
 
@@ -141,6 +197,44 @@ class PriceService {
 
   clearCache() {
     this.cache.clear();
+  }
+
+  // CoinMarketCap API methods
+  async getCoinMarketCapLatestPrice(tokenAddress) {
+    if (!this.coinMarketCapApiKey) {
+      throw new Error('CoinMarketCap API key not configured');
+    }
+
+    const response = await axios.get(`${this.coinMarketCapBaseUrl}/cryptocurrency/quotes/latest`, {
+      params: {
+        address: tokenAddress.toLowerCase(),
+        convert: 'USD'
+      },
+      headers: {
+        'X-CMC_PRO_API_KEY': this.coinMarketCapApiKey,
+        'Accept': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    const data = response.data.data;
+    const tokenData = Object.values(data)[0];
+    
+    if (!tokenData || !tokenData.quote || !tokenData.quote.USD) {
+      throw new Error(`No USD price found for token ${tokenAddress}`);
+    }
+
+    return tokenData.quote.USD.price;
+  }
+
+  async getCoinMarketCapHistoricalPrice(tokenAddress, timestamp) {
+    if (!this.coinMarketCapApiKey) {
+      throw new Error('CoinMarketCap API key not configured');
+    }
+
+    // CoinMarketCap historical data requires symbol, not address
+    // This is a limitation - we'd need to map addresses to symbols
+    throw new Error('CoinMarketCap historical price by address not supported. Use CoinGecko for historical data.');
   }
 }
 
