@@ -10,8 +10,9 @@ import cors from 'cors';
 
 import { typeDefs } from './schema';
 import { vaultResolver } from './resolvers/vaultResolver';
-import { userResolver } from './proofResolver';
-import { proofResolver } from './resolvers/userResolver';
+import { organizationResolver } from './resolvers/organizationResolver';
+import { userResolver } from './resolvers/userResolver';
+import { proofResolver } from './resolvers/proofResolver';
 import { subscriptionResolver, pubsub } from './subscriptions/proofSubscription';
 import { Context, authMiddleware, roleBasedAccess } from './middleware/auth';
 import { adaptiveRateLimitMiddleware } from './middleware/rateLimit';
@@ -19,6 +20,7 @@ import { adaptiveRateLimitMiddleware } from './middleware/rateLimit';
 // Combine all resolvers
 const resolvers = {
   Query: {
+    ...organizationResolver.Query,
     ...vaultResolver.Query,
     ...userResolver.Query,
     ...proofResolver.Query
@@ -30,6 +32,9 @@ const resolvers = {
   },
   Subscription: {
     ...subscriptionResolver.Subscription
+  },
+  Organization: {
+    ...organizationResolver.Organization
   },
   Vault: {
     ...vaultResolver.Vault
