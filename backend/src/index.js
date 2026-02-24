@@ -27,13 +27,15 @@ Sentry.init({
   profilesSampleRate: 1.0, // 100% of transactions are profiled
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 
 const httpServer = http.createServer(app);
 
-// Sentry request handler must be the first middleware
-app.use(Sentry.Handlers.requestHandler());
-app.use(Sentry.Handlers.tracingHandler());
+// Sentry request handler must be the first middleware (only if Sentry is properly configured)
+if (process.env.SENTRY_DSN && Sentry.Handlers) {
+  app.use(Sentry.Handlers.requestHandler());
+  app.use(Sentry.Handlers.tracingHandler());
+}
 
 // Middleware
 app.use(cors());
@@ -56,7 +58,19 @@ const { sequelize } = require('./database/connection');
 const models = require('./models');
 const { OrganizationWebhook } = models;
 // Register webhook URL for organization
-const { isAdminOfOrg } = require('./graphql/middleware/auth');
+// For now, let's create a simple isAdminOfOrg function inline
+const isAdminOfOrg = async (adminAddress, orgId) => {
+  if (!adminAddress || !orgId) return false;
+  try {
+    const org = await models.Organization.findOne({
+      where: { id: orgId, admin_address: adminAddress }
+    });
+    return !!org;
+  } catch (err) {
+    console.error('Error in isAdminOfOrg:', err);
+    return false;
+  }
+};
 // Register webhook URL for organization with admin/org check
 app.post('/api/admin/webhooks', async (req, res) => {
   try {
@@ -117,7 +131,6 @@ app.post('/api/claims/batch', claimRateLimiter, async (req, res) => {
       success: false,
       error: error.message
     });
-    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -134,10 +147,6 @@ app.post('/api/claims/backfill-prices', claimRateLimiter, async (req, res) => {
       success: false,
       error: error.message
     });
-    res.json({ success: true, message: `Backfilled prices for ${processedCount} claims` });
-  } catch (error) {
-    console.error('Error backfilling prices:', error);
-    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -159,10 +168,6 @@ app.get('/api/claims/:userAddress/realized-gains', async (req, res) => {
       success: false,
       error: error.message
     });
-    res.json({ success: true, data: gains });
-  } catch (error) {
-    console.error('Error calculating realized gains:', error);
-    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -304,7 +309,9 @@ app.get('/api/stats/tvl', async (req, res) => {
   }
 });
 
-
+app.get('/api/vaults/:id/export', async (req, res) => {
+  try {
+    const { id } = req.params;
     await vaultExportService.streamVaultAsCSV(id, res);
   } catch (error) {
     console.error('Error exporting vault:', error);
@@ -319,7 +326,9 @@ app.get('/api/stats/tvl', async (req, res) => {
 });
 
 // Sentry error handler must be before any other error middleware and after all controllers
-app.use(Sentry.Handlers.errorHandler());
+if (process.env.SENTRY_DSN && Sentry.Handlers) {
+  app.use(Sentry.Handlers.errorHandler());
+}
 
 // Start server
 const startServer = async () => {
@@ -348,8 +357,10 @@ const startServer = async () => {
     // Initialize GraphQL Server
     let graphQLServer = null;
     try {
-      const { createGraphQLServer } = require('./graphql/server');
-      graphQLServer = await createGraphQLServer(app);
+      const { GraphQLServer } = require('./graphql/server');
+      graphQLServer = new GraphQLServer(app, httpServer);
+      await graphQLServer.start();
+      await graphQLServer.applyMiddleware(app);
       console.log('GraphQL Server initialized successfully.');
 
       const serverInfo = graphQLServer.getServerInfo();

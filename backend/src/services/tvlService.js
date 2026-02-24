@@ -27,7 +27,7 @@ class TVLService {
   }
 
   /**
-   * Update TVL record in database
+   * Update TVL record in database and broadcast via WebSocket
    * @returns {Promise<TVL>} Updated TVL record
    */
   async updateTVL() {
@@ -52,6 +52,10 @@ class TVLService {
       }
 
       console.log(`TVL updated: ${totalValueLocked} across ${activeVaultsCount} vaults`);
+
+      // Broadcast TVL update via WebSocket
+      await this.broadcastTVLUpdate(tvlRecord);
+
       return tvlRecord;
     } catch (error) {
       console.error('Error updating TVL:', error);
@@ -124,6 +128,30 @@ class TVLService {
       return `$${(tvl / 1000).toFixed(2)}K`;
     }
     return `$${tvl.toFixed(2)}`;
+  }
+
+  /**
+   * Broadcast TVL update via WebSocket
+   * @param {Object} tvlRecord - TVL database record
+   * @returns {Promise<void>}
+   */
+  async broadcastTVLUpdate(tvlRecord) {
+    try {
+      // Import here to avoid circular dependency
+      const { publishTVLUpdate } = require('../graphql/subscriptions/proofSubscription');
+      
+      const tvlStats = {
+        totalValueLocked: parseFloat(tvlRecord.total_value_locked),
+        activeVaultsCount: tvlRecord.active_vaults_count,
+        formattedTvl: this.formatTVL(parseFloat(tvlRecord.total_value_locked)),
+        lastUpdatedAt: tvlRecord.last_updated_at
+      };
+
+      await publishTVLUpdate(tvlStats);
+    } catch (error) {
+      console.error('Error broadcasting TVL update:', error);
+      // Don't throw - broadcast failure shouldn't fail TVL update
+    }
   }
 }
 

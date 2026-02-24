@@ -10,7 +10,8 @@ export const SUBSCRIPTION_EVENTS = {
   NEW_CLAIM: 'NEW_CLAIM',
   WITHDRAWAL_PROCESSED: 'WITHDRAWAL_PROCESSED',
   AUDIT_LOG_CREATED: 'AUDIT_LOG_CREATED',
-  ADMIN_TRANSFER_UPDATED: 'ADMIN_TRANSFER_UPDATED'
+  ADMIN_TRANSFER_UPDATED: 'ADMIN_TRANSFER_UPDATED',
+  TVL_UPDATED: 'TVL_UPDATED'
 };
 
 export const subscriptionResolver = {
@@ -87,6 +88,13 @@ export const subscriptionResolver = {
           : pubsub.asyncIterator([SUBSCRIPTION_EVENTS.ADMIN_TRANSFER_UPDATED]);
         
         return subscription;
+      },
+      resolve: (payload: any) => payload
+    },
+
+    tvlUpdated: {
+      subscribe: () => {
+        return pubsub.asyncIterator([SUBSCRIPTION_EVENTS.TVL_UPDATED]);
       },
       resolve: (payload: any) => payload
     }
@@ -226,6 +234,15 @@ export const publishAdminTransferUpdated = async (contractAddress: string, trans
     });
   } catch (error) {
     console.error('Error publishing admin transfer updated:', error);
+  }
+};
+
+export const publishTVLUpdate = async (tvlStats: any) => {
+  try {
+    pubsub.publish(SUBSCRIPTION_EVENTS.TVL_UPDATED, { tvlUpdated: tvlStats });
+    console.log('TVL update published via WebSocket:', tvlStats);
+  } catch (error) {
+    console.error('Error publishing TVL update:', error);
   }
 };
 
