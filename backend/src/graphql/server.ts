@@ -13,6 +13,9 @@ import { vaultResolver } from './resolvers/vaultResolver';
 import { organizationResolver } from './resolvers/organizationResolver';
 import { userResolver } from './resolvers/userResolver';
 import { proofResolver } from './resolvers/proofResolver';
+import { userResolver } from './resolvers/userResolver';
+import { proofResolver } from './resolvers/proofResolver';
+import { tvlResolver } from './resolvers/tvlResolver';
 import { subscriptionResolver, pubsub } from './subscriptions/proofSubscription';
 import { Context, authMiddleware, roleBasedAccess } from './middleware/auth';
 import { adaptiveRateLimitMiddleware } from './middleware/rateLimit';
@@ -23,7 +26,8 @@ const resolvers = {
     ...organizationResolver.Query,
     ...vaultResolver.Query,
     ...userResolver.Query,
-    ...proofResolver.Query
+    ...proofResolver.Query,
+    ...tvlResolver.Query
   },
   Mutation: {
     ...vaultResolver.Mutation,
@@ -57,7 +61,7 @@ export interface GraphQLContext extends Context {
 export class GraphQLServer {
   private apolloServer: ApolloServer<GraphQLContext>;
   private httpServer: http.Server;
-  private wsServer: WebSocketServer;
+  private wsServer: WebSocketServer | null = null;
 
   constructor(app: express.Application, httpServer: http.Server) {
     this.httpServer = httpServer;
@@ -85,19 +89,21 @@ export class GraphQLServer {
             pubsub,
             req: ctx.extra.request,
             res: null
-          };
+          } as GraphQLContext;
         },
       },
       this.wsServer
     );
   }
 
-  private async extractUserFromWebSocket(ctx: any): Promise<any> {
+  private async extractUserFromWebSocket(ctx: any): Promise<{ address: string; role: 'user' | 'admin' } | undefined> {
     try {
       // Extract authorization from connection params
       const connectionParams = ctx.connectionParams || {};
       const authHeader = connectionParams.authorization;
-      const userAddress = connectionParams['x-user-address'];
+      const userAddress = typeof connectionParams['x-user-address'] === 'string' 
+        ? connectionParams['x-user-address'] 
+        : undefined;
 
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.substring(7);
@@ -123,10 +129,10 @@ export class GraphQLServer {
         };
       }
 
-      return null;
+      return undefined;
     } catch (error) {
       console.error('Error extracting user from WebSocket:', error);
-      return null;
+      return undefined;
     }
   }
 
@@ -140,7 +146,9 @@ export class GraphQLServer {
             return {
               drainServer: async () => {
                 // Close WebSocket server
-                this.wsServer.close();
+                if (this.wsServer) {
+                  this.wsServer.close();
+                }
               },
             };
           },
@@ -181,9 +189,11 @@ export class GraphQLServer {
         context: async ({ req, res }): Promise<GraphQLContext> => {
           // Extract user from request
           const authHeader = req.headers.authorization;
-          const userAddress = req.headers['x-user-address'];
+          const userAddress = typeof req.headers['x-user-address'] === 'string' 
+            ? req.headers['x-user-address'] 
+            : undefined;
           
-          let user = null;
+          let user: { address: string; role: 'user' | 'admin' } | undefined = undefined;
           
           if (authHeader && authHeader.startsWith('Bearer ')) {
             const token = authHeader.substring(7);
@@ -229,10 +239,11 @@ export class GraphQLServer {
 
   // Get server info
   getServerInfo() {
+    const port = process.env.PORT || 4000;
     return {
       graphqlEndpoint: '/graphql',
-      subscriptionEndpoint: 'ws://localhost:3000/graphql',
-      playgroundUrl: 'http://localhost:3000/graphql'
+      subscriptionEndpoint: `ws://localhost:${port}/graphql`,
+      playgroundUrl: `http://localhost:${port}/graphql`
     };
   }
 }

@@ -185,6 +185,9 @@ export const typeDefs = `
     claim(transactionHash: String!): ClaimsHistory
     realizedGains(userAddress: String!, startDate: DateTime, endDate: DateTime): RealizedGains!
     
+    # TVL queries
+    tvlStats: TVLStats!
+    
     # Admin queries
     auditLogs(limit: Int): [AuditLog!]!
     pendingTransfers(contractAddress: String): [AdminTransfer!]!
@@ -217,6 +220,13 @@ export const typeDefs = `
     transferOwnership(input: CreateAdminTransferInput!): AdminTransfer!
   }
 
+  type TVLStats {
+    totalValueLocked: Decimal!
+    activeVaultsCount: Int!
+    formattedTvl: String!
+    lastUpdatedAt: DateTime!
+  }
+
   type Subscription {
     # Real-time subscriptions
     vaultUpdated(vaultAddress: String): Vault!
@@ -224,6 +234,9 @@ export const typeDefs = `
     newClaim(userAddress: String): ClaimsHistory!
     withdrawalProcessed(vaultAddress: String, beneficiaryAddress: String): WithdrawableInfo!
     auditLogCreated: AuditLog!
+    
+    # TVL real-time updates
+    tvlUpdated: TVLStats!
     
     # Admin subscriptions
     adminTransferUpdated(contractAddress: String): AdminTransfer!

@@ -173,6 +173,14 @@ export const vaultResolver = {
           total_amount: (parseFloat(vault.total_amount) + parseFloat(input.amount)).toString()
         });
 
+        // Update TVL for vault top-up
+        try {
+          await tvlService.handleVaultCreated(vault.toJSON());
+        } catch (tvlError) {
+          console.error('Error updating TVL for vault top-up:', tvlError);
+          // Don't throw - TVL update failure shouldn't fail top-up
+        }
+
         return subSchedule;
       } catch (error) {
         console.error('Error processing top-up:', error);
