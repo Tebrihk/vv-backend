@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
 const { rateLimit } = require('express-rate-limit');
+const { walletRateLimitMiddleware } = require('./middleware/wallet-ratelimit.middleware');
 
 const Sentry = require('@sentry/node');
 const { nodeProfilingIntegration } = require('@sentry/profiling-node');
@@ -38,6 +39,9 @@ app.use(Sentry.Handlers.tracingHandler());
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Apply wallet-based rate limiting to all API routes
+app.use('/api', walletRateLimitMiddleware);
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
 
@@ -374,7 +378,7 @@ const startServer = async () => {
     } catch (jobError) {
       console.error('Failed to initialize Monthly Report Job:', jobError);
     }
-    
+
     // Start the HTTP server
     httpServer.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
