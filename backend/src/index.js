@@ -331,6 +331,50 @@ app.get('/api/vaults/:id/export', async (req, res) => {
   }
 });
 
+// Token distribution endpoint for pie chart data
+app.get('/api/token/:address/distribution', async (req, res) => {
+  try {
+    const { address } = req.params;
+    const { Vault } = require('./models');
+
+    // Get all vaults for this token address, grouped by tag
+    const distribution = await Vault.findAll({
+      attributes: [
+        'tag',
+        [sequelize.fn('SUM', sequelize.col('total_amount')), 'total_amount']
+      ],
+      where: {
+        token_address: address,
+        total_amount: {
+          [sequelize.Op.gt]: 0
+        }
+      },
+      group: ['tag'],
+      raw: true
+    });
+
+    // Format the response
+    const result = distribution
+      .filter(item => item.tag) // Filter out null tags
+      .map(item => ({
+        label: item.tag,
+        amount: parseFloat(item.total_amount)
+      }))
+      .sort((a, b) => b.amount - a.amount); // Sort by amount descending
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Error fetching token distribution:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Sentry error handler must be before any other error middleware and after all controllers
 if (process.env.SENTRY_DSN && Sentry.Handlers) {
   app.use(Sentry.Handlers.errorHandler());

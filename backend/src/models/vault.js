@@ -29,6 +29,11 @@ const Vault = sequelize.define('Vault', {
     allowNull: false,
     defaultValue: 0,
   },
+  tag: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'Vault category tag (e.g., Seed, Private, Advisors, Team)',
+  },
   org_id: {
     type: DataTypes.UUID,
     allowNull: true,
@@ -65,7 +70,7 @@ const Vault = sequelize.define('Vault', {
 });
 
 // Add association method
-Vault.associate = function(models) {
+Vault.associate = function (models) {
   Vault.belongsTo(models.Organization, {
     foreignKey: 'org_id',
     as: 'organization'
