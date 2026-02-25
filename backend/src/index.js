@@ -98,6 +98,9 @@ const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
 
+// Import webhooks routes
+const webhooksRoutes = require('./routes/webhooks');
+
 
 app.get('/', (req, res) => {
   res.json({ message: 'Vesting Vault API is running!' });
@@ -106,6 +109,9 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
+
+// Mount webhooks routes
+app.use('/webhooks', webhooksRoutes);
 
 app.post('/api/claims', claimRateLimiter, async (req, res) => {
   try {
@@ -385,7 +391,7 @@ const startServer = async () => {
     } catch (jobError) {
       console.error('Failed to initialize Monthly Report Job:', jobError);
     }
-    
+
     // Start the HTTP server
     httpServer.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
