@@ -6,7 +6,7 @@ const SubSchedule = require('./subSchedule');
 const TVL = require('./tvl');
 const Beneficiary = require('./beneficiary');
 const Organization = require('./organization');
-const Notification = require('./notification');
+const IndexerState = require('./indexerState');
 
 const { Token, initTokenModel } = require('./token');
 const { OrganizationWebhook, initOrganizationWebhookModel } = require('./organizationWebhook');
@@ -24,7 +24,9 @@ const models = {
   TVL,
   Beneficiary,
   Organization,
-
+  Token,
+  OrganizationWebhook,
+  IndexerState,
   sequelize,
 };
 
