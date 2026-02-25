@@ -40,6 +40,7 @@ if (process.env.SENTRY_DSN && Sentry.Handlers) {
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(require('cookie-parser')());
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
 
@@ -97,6 +98,7 @@ const discordBotService = require('./services/discordBotService');
 const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
+const authService = require('./services/authService');
 
 
 app.get('/', (req, res) => {
@@ -105,6 +107,144 @@ app.get('/', (req, res) => {
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// Authentication endpoints
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { address, signature } = req.body;
+
+    if (!address || !signature) {
+      return res.status(400).json({
+        success: false,
+        error: 'Address and signature are required'
+      });
+    }
+
+    // TODO: Verify signature with Ethereum message
+    // For now, we'll create tokens without signature verification
+    // In production, implement proper EIP-712 signature verification
+
+    const tokens = await authService.createTokens(address);
+
+    // Set refresh token in secure cookie
+    authService.setRefreshTokenCookie(res, tokens.refreshToken);
+
+    // Return access token in response (don't return refresh token)
+    res.json({
+      success: true,
+      data: {
+        accessToken: tokens.accessToken,
+        expiresIn: tokens.expiresIn,
+        tokenType: tokens.tokenType
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Login failed'
+    });
+  }
+});
+
+// POST /api/auth/refresh - Token refresh endpoint
+app.post('/api/auth/refresh', async (req, res) => {
+  try {
+    // Try to get refresh token from cookie first
+    let refreshToken = authService.getRefreshTokenFromCookie(req);
+
+    // If not in cookie, try request body
+    if (!refreshToken) {
+      refreshToken = req.body.refreshToken;
+    }
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        error: 'Refresh token required'
+      });
+    }
+
+    // Refresh tokens (this will revoke the old token and create new ones)
+    const newTokens = await authService.refreshTokens(refreshToken);
+
+    // Set new refresh token in secure cookie
+    authService.setRefreshTokenCookie(res, newTokens.refreshToken);
+
+    // Return new access token
+    res.json({
+      success: true,
+      data: {
+        accessToken: newTokens.accessToken,
+        expiresIn: newTokens.expiresIn,
+        tokenType: newTokens.tokenType
+      }
+    });
+  } catch (error) {
+    console.error('Token refresh error:', error);
+
+    // Clear invalid refresh token cookie
+    authService.clearRefreshTokenCookie(res);
+
+    res.status(401).json({
+      success: false,
+      error: error.message || 'Token refresh failed'
+    });
+  }
+});
+
+// POST /api/auth/logout - Logout endpoint
+app.post('/api/auth/logout', async (req, res) => {
+  try {
+    const token = authService.extractTokenFromHeader(req);
+
+    if (token) {
+      try {
+        const decoded = await authService.verifyAccessToken(token);
+        // Revoke all refresh tokens for this user
+        await authService.revokeAllUserTokens(decoded.address);
+      } catch (error) {
+        // Token might be invalid, but still clear cookie
+        console.log('Invalid token during logout:', error.message);
+      }
+    }
+
+    // Clear refresh token cookie
+    authService.clearRefreshTokenCookie(res);
+
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Logout failed'
+    });
+  }
+});
+
+// GET /api/auth/me - Get current user info
+app.get('/api/auth/me', authService.authenticate(), async (req, res) => {
+  try {
+    const user = req.user;
+
+    res.json({
+      success: true,
+      data: {
+        address: user.address,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Get user info error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get user info'
+    });
+  }
 });
 
 app.post('/api/claims', claimRateLimiter, async (req, res) => {
@@ -385,7 +525,7 @@ const startServer = async () => {
     } catch (jobError) {
       console.error('Failed to initialize Monthly Report Job:', jobError);
     }
-    
+
     // Start the HTTP server
     httpServer.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);

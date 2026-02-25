@@ -7,6 +7,7 @@ const TVL = require('./tvl');
 const Beneficiary = require('./beneficiary');
 const Organization = require('./organization');
 const Notification = require('./notification');
+const RefreshToken = require('./refreshToken');
 
 const { Token, initTokenModel } = require('./token');
 const { OrganizationWebhook, initOrganizationWebhookModel } = require('./organizationWebhook');
@@ -24,6 +25,9 @@ const models = {
   TVL,
   Beneficiary,
   Organization,
+  RefreshToken,
+  Token,
+  OrganizationWebhook,
 
   sequelize,
 };
