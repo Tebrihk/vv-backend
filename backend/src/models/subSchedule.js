@@ -80,6 +80,11 @@ const SubSchedule = sequelize.define('SubSchedule', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+  block_number: {
+    type: DataTypes.BIGINT,
+    allowNull: true,
+    comment: 'Ledger sequence number where this top-up was confirmed',
+  },
 }, {
   tableName: 'sub_schedules',
   timestamps: true,
