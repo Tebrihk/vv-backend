@@ -20,6 +20,24 @@ import {
 const {
   graphqlWalletRateLimitMiddleware,
 } = require("../middleware/wallet-ratelimit.middleware");
+import { ApolloServer } from '@apollo/server';
+import { expressMiddleware } from '@apollo/server/express4';
+import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
+import { WebSocketServer } from 'ws';
+import { useServer } from 'graphql-ws/lib/use/ws';
+import { makeExecutableSchema } from '@graphql-tools/schema';
+import http from 'http';
+import express from 'express';
+import cors from 'cors';
+
+import { typeDefs } from './schema';
+import { vaultResolver } from './resolvers/vaultResolver';
+import { userResolver } from './resolvers/userResolver';
+import { proofResolver } from './resolvers/proofResolver';
+import { tvlResolver } from './resolvers/tvlResolver';
+import { subscriptionResolver, pubsub } from './subscriptions/proofSubscription';
+import { Context, authMiddleware, roleBasedAccess } from './middleware/auth';
+import { adaptiveRateLimitMiddleware } from './middleware/rateLimit';
 
 // Combine all resolvers
 const resolvers = {
@@ -27,6 +45,7 @@ const resolvers = {
     ...vaultResolver.Query,
     ...userResolver.Query,
     ...proofResolver.Query,
+    ...tvlResolver.Query
   },
   Mutation: {
     ...vaultResolver.Mutation,
@@ -57,7 +76,7 @@ export interface GraphQLContext extends Context {
 export class GraphQLServer {
   private apolloServer: ApolloServer<GraphQLContext>;
   private httpServer: http.Server;
-  private wsServer: WebSocketServer;
+  private wsServer: WebSocketServer | null = null;
 
   constructor(app: express.Application, httpServer: http.Server) {
     this.httpServer = httpServer;
@@ -86,18 +105,23 @@ export class GraphQLServer {
             req: ctx.extra.request,
             res: null,
           };
+            res: null
+          } as GraphQLContext;
         },
       },
       this.wsServer,
     );
   }
 
-  private async extractUserFromWebSocket(ctx: any): Promise<any> {
+  private async extractUserFromWebSocket(ctx: any): Promise<{ address: string; role: 'user' | 'admin' } | undefined> {
     try {
       // Extract authorization from connection params
       const connectionParams = ctx.connectionParams || {};
       const authHeader = connectionParams.authorization;
       const userAddress = connectionParams["x-user-address"];
+      const userAddress = typeof connectionParams['x-user-address'] === 'string' 
+        ? connectionParams['x-user-address'] 
+        : undefined;
 
       if (authHeader && authHeader.startsWith("Bearer ")) {
         const token = authHeader.substring(7);
@@ -123,10 +147,12 @@ export class GraphQLServer {
         };
       }
 
-      return null;
+      return undefined;
     } catch (error) {
       console.error("Error extracting user from WebSocket:", error);
       return null;
+      console.error('Error extracting user from WebSocket:', error);
+      return undefined;
     }
   }
 
@@ -140,7 +166,9 @@ export class GraphQLServer {
             return {
               drainServer: async () => {
                 // Close WebSocket server
-                this.wsServer.close();
+                if (this.wsServer) {
+                  this.wsServer.close();
+                }
               },
             };
           },
@@ -186,6 +214,13 @@ export class GraphQLServer {
           let user = null;
 
           if (authHeader && authHeader.startsWith("Bearer ")) {
+          const userAddress = typeof req.headers['x-user-address'] === 'string' 
+            ? req.headers['x-user-address'] 
+            : undefined;
+          
+          let user: { address: string; role: 'user' | 'admin' } | undefined = undefined;
+          
+          if (authHeader && authHeader.startsWith('Bearer ')) {
             const token = authHeader.substring(7);
             // In a real implementation, verify JWT token
             if (token === "admin-token") {
@@ -229,10 +264,14 @@ export class GraphQLServer {
 
   // Get server info
   getServerInfo() {
+    const port = process.env.PORT || 4000;
     return {
       graphqlEndpoint: "/graphql",
       subscriptionEndpoint: "ws://localhost:3000/graphql",
       playgroundUrl: "http://localhost:3000/graphql",
+      graphqlEndpoint: '/graphql',
+      subscriptionEndpoint: `ws://localhost:${port}/graphql`,
+      playgroundUrl: `http://localhost:${port}/graphql`
     };
   }
 }
