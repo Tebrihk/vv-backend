@@ -1,3 +1,25 @@
+import { ApolloServer } from "@apollo/server";
+import { expressMiddleware } from "@apollo/server/express4";
+import { ApolloServerPluginDrainHttpServer } from "@apollo/server/plugin/drainHttpServer";
+import { makeExecutableSchema } from "@graphql-tools/schema";
+import cors from "cors";
+import express from "express";
+import { useServer } from "graphql-ws/lib/use/ws";
+import http from "http";
+import { WebSocketServer } from "ws";
+
+import { Context } from "./middleware/auth";
+import { userResolver } from "./proofResolver";
+import { proofResolver } from "./resolvers/userResolver";
+import { vaultResolver } from "./resolvers/vaultResolver";
+import { typeDefs } from "./schema";
+import {
+  pubsub,
+  subscriptionResolver,
+} from "./subscriptions/proofSubscription";
+const {
+  graphqlWalletRateLimitMiddleware,
+} = require("../middleware/wallet-ratelimit.middleware");
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
 import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
@@ -28,17 +50,17 @@ const resolvers = {
   Mutation: {
     ...vaultResolver.Mutation,
     ...userResolver.Mutation,
-    ...proofResolver.Mutation
+    ...proofResolver.Mutation,
   },
   Subscription: {
-    ...subscriptionResolver.Subscription
+    ...subscriptionResolver.Subscription,
   },
   Vault: {
-    ...vaultResolver.Vault
+    ...vaultResolver.Vault,
   },
   Beneficiary: {
-    ...userResolver.Beneficiary
-  }
+    ...userResolver.Beneficiary,
+  },
 };
 
 // Create executable schema
@@ -66,7 +88,7 @@ export class GraphQLServer {
     // Create WebSocket server for subscriptions
     this.wsServer = new WebSocketServer({
       server: this.httpServer,
-      path: '/graphql',
+      path: "/graphql",
     });
 
     // Use the WebSocket server for GraphQL subscriptions
@@ -76,16 +98,18 @@ export class GraphQLServer {
         context: async (ctx) => {
           // Extract authentication from WebSocket connection
           const user = await this.extractUserFromWebSocket(ctx);
-          
+
           return {
             user,
             pubsub,
             req: ctx.extra.request,
+            res: null,
+          };
             res: null
           } as GraphQLContext;
         },
       },
-      this.wsServer
+      this.wsServer,
     );
   }
 
@@ -94,23 +118,24 @@ export class GraphQLServer {
       // Extract authorization from connection params
       const connectionParams = ctx.connectionParams || {};
       const authHeader = connectionParams.authorization;
+      const userAddress = connectionParams["x-user-address"];
       const userAddress = typeof connectionParams['x-user-address'] === 'string' 
         ? connectionParams['x-user-address'] 
         : undefined;
 
-      if (authHeader && authHeader.startsWith('Bearer ')) {
+      if (authHeader && authHeader.startsWith("Bearer ")) {
         const token = authHeader.substring(7);
         // In a real implementation, verify JWT token
-        if (token === 'admin-token') {
+        if (token === "admin-token") {
           return {
-            address: '0x1234567890123456789012345678901234567890',
-            role: 'admin'
+            address: "0x1234567890123456789012345678901234567890",
+            role: "admin",
           };
         }
-        if (token === 'user-token') {
+        if (token === "user-token") {
           return {
-            address: '0x9876543210987654321098765432109876543210',
-            role: 'user'
+            address: "0x9876543210987654321098765432109876543210",
+            role: "user",
           };
         }
       }
@@ -118,12 +143,14 @@ export class GraphQLServer {
       if (userAddress) {
         return {
           address: userAddress,
-          role: 'user'
+          role: "user",
         };
       }
 
       return undefined;
     } catch (error) {
+      console.error("Error extracting user from WebSocket:", error);
+      return null;
       console.error('Error extracting user from WebSocket:', error);
       return undefined;
     }
@@ -148,20 +175,20 @@ export class GraphQLServer {
         },
       ],
       // Enable playground in development
-      introspection: process.env.NODE_ENV !== 'production',
+      introspection: process.env.NODE_ENV !== "production",
       // Format errors
       formatError: (formattedError, error) => {
         // Log errors for debugging
-        console.error('GraphQL Error:', error);
-        
+        console.error("GraphQL Error:", error);
+
         // Don't expose internal error details in production
-        if (process.env.NODE_ENV === 'production') {
+        if (process.env.NODE_ENV === "production") {
           return {
             message: formattedError.message,
-            extensions: formattedError.extensions
+            extensions: formattedError.extensions,
           };
         }
-        
+
         return formattedError;
       },
       // Validation rules
@@ -175,13 +202,18 @@ export class GraphQLServer {
   async applyMiddleware(app: express.Application): Promise<void> {
     // Apply Apollo Server middleware
     app.use(
-      '/graphql',
+      "/graphql",
       cors<cors.CorsRequest>(),
       express.json(),
       expressMiddleware(this.apolloServer, {
         context: async ({ req, res }): Promise<GraphQLContext> => {
           // Extract user from request
           const authHeader = req.headers.authorization;
+          const userAddress = req.headers["x-user-address"];
+
+          let user = null;
+
+          if (authHeader && authHeader.startsWith("Bearer ")) {
           const userAddress = typeof req.headers['x-user-address'] === 'string' 
             ? req.headers['x-user-address'] 
             : undefined;
@@ -191,21 +223,21 @@ export class GraphQLServer {
           if (authHeader && authHeader.startsWith('Bearer ')) {
             const token = authHeader.substring(7);
             // In a real implementation, verify JWT token
-            if (token === 'admin-token') {
+            if (token === "admin-token") {
               user = {
-                address: '0x1234567890123456789012345678901234567890',
-                role: 'admin'
+                address: "0x1234567890123456789012345678901234567890",
+                role: "admin",
               };
-            } else if (token === 'user-token') {
+            } else if (token === "user-token") {
               user = {
-                address: '0x9876543210987654321098765432109876543210',
-                role: 'user'
+                address: "0x9876543210987654321098765432109876543210",
+                role: "user",
               };
             }
           } else if (userAddress) {
             user = {
               address: userAddress,
-              role: 'user'
+              role: "user",
             };
           }
 
@@ -213,10 +245,10 @@ export class GraphQLServer {
             user,
             pubsub,
             req,
-            res
+            res,
           };
         },
-      })
+      }),
     );
   }
 
@@ -234,6 +266,9 @@ export class GraphQLServer {
   getServerInfo() {
     const port = process.env.PORT || 4000;
     return {
+      graphqlEndpoint: "/graphql",
+      subscriptionEndpoint: "ws://localhost:3000/graphql",
+      playgroundUrl: "http://localhost:3000/graphql",
       graphqlEndpoint: '/graphql',
       subscriptionEndpoint: `ws://localhost:${port}/graphql`,
       playgroundUrl: `http://localhost:${port}/graphql`
@@ -242,19 +277,21 @@ export class GraphQLServer {
 }
 
 // Helper function to create and configure GraphQL server
-export const createGraphQLServer = async (app: express.Application): Promise<GraphQLServer> => {
+export const createGraphQLServer = async (
+  app: express.Application,
+): Promise<GraphQLServer> => {
   // Create HTTP server if not provided
   const httpServer = http.createServer(app);
-  
+
   // Create GraphQL server instance
   const graphQLServer = new GraphQLServer(app, httpServer);
-  
+
   // Start the server
   await graphQLServer.start();
-  
+
   // Apply middleware
   await graphQLServer.applyMiddleware(app);
-  
+
   return graphQLServer;
 };
 
