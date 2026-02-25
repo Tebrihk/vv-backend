@@ -30,6 +30,12 @@ const Beneficiary = sequelize.define('Beneficiary', {
       isEmail: true,
     },
   },
+  email_valid: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+    comment: 'Flag to indicate if email is valid (not bounced)',
+  },
   total_allocated: {
     type: DataTypes.DECIMAL(36, 18),
     allowNull: false,

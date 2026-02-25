@@ -99,6 +99,9 @@ const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
 const pdfService = require('./services/pdfService');
 
+// Import webhooks routes
+const webhooksRoutes = require('./routes/webhooks');
+
 
 app.get('/', (req, res) => {
   res.json({ message: 'Vesting Vault API is running!' });
@@ -107,6 +110,9 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
+
+// Mount webhooks routes
+app.use('/webhooks', webhooksRoutes);
 
 app.post('/api/claims', claimRateLimiter, async (req, res) => {
   try {
@@ -391,6 +397,47 @@ app.get('/api/vault/:id/agreement.pdf', async (req, res) => {
     } else {
       res.destroy(error);
     }
+// Token distribution endpoint for pie chart data
+app.get('/api/token/:address/distribution', async (req, res) => {
+  try {
+    const { address } = req.params;
+    const { Vault } = require('./models');
+
+    // Get all vaults for this token address, grouped by tag
+    const distribution = await Vault.findAll({
+      attributes: [
+        'tag',
+        [sequelize.fn('SUM', sequelize.col('total_amount')), 'total_amount']
+      ],
+      where: {
+        token_address: address,
+        total_amount: {
+          [sequelize.Op.gt]: 0
+        }
+      },
+      group: ['tag'],
+      raw: true
+    });
+
+    // Format the response
+    const result = distribution
+      .filter(item => item.tag) // Filter out null tags
+      .map(item => ({
+        label: item.tag,
+        amount: parseFloat(item.total_amount)
+      }))
+      .sort((a, b) => b.amount - a.amount); // Sort by amount descending
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Error fetching token distribution:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
