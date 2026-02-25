@@ -32,6 +32,9 @@ import cors from 'cors';
 
 import { typeDefs } from './schema';
 import { vaultResolver } from './resolvers/vaultResolver';
+import { organizationResolver } from './resolvers/organizationResolver';
+import { userResolver } from './resolvers/userResolver';
+import { proofResolver } from './resolvers/proofResolver';
 import { userResolver } from './resolvers/userResolver';
 import { proofResolver } from './resolvers/proofResolver';
 import { tvlResolver } from './resolvers/tvlResolver';
@@ -42,6 +45,7 @@ import { adaptiveRateLimitMiddleware } from './middleware/rateLimit';
 // Combine all resolvers
 const resolvers = {
   Query: {
+    ...organizationResolver.Query,
     ...vaultResolver.Query,
     ...userResolver.Query,
     ...proofResolver.Query,
@@ -54,6 +58,9 @@ const resolvers = {
   },
   Subscription: {
     ...subscriptionResolver.Subscription,
+  },
+  Organization: {
+    ...organizationResolver.Organization
   },
   Vault: {
     ...vaultResolver.Vault,
