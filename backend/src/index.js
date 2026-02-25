@@ -99,6 +99,10 @@ const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
 const authService = require('./services/authService');
+const pdfService = require('./services/pdfService');
+
+// Import webhooks routes
+const webhooksRoutes = require('./routes/webhooks');
 
 
 app.get('/', (req, res) => {
@@ -246,6 +250,8 @@ app.get('/api/auth/me', authService.authenticate(), async (req, res) => {
     });
   }
 });
+// Mount webhooks routes
+app.use('/webhooks', webhooksRoutes);
 
 app.post('/api/claims', claimRateLimiter, async (req, res) => {
   try {
@@ -462,6 +468,115 @@ app.get('/api/vaults/:id/export', async (req, res) => {
     } else {
       res.destroy(error);
     }
+  }
+});
+
+// Vesting Agreement PDF endpoint
+app.get('/api/vault/:id/agreement.pdf', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { Vault, Beneficiary, SubSchedule, Organization, Token } = require('./models');
+
+    // Find vault with related data
+    const vault = await Vault.findOne({
+      where: { id },
+      include: [
+        {
+          model: Organization,
+          as: 'organization',
+          required: false
+        },
+        {
+          model: Beneficiary,
+          required: true
+        },
+        {
+          model: SubSchedule,
+          required: false
+        }
+      ]
+    });
+
+    if (!vault) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vault not found'
+      });
+    }
+
+    // Get token information (assuming token address maps to token model)
+    let token = null;
+    if (vault.token_address) {
+      token = await Token.findOne({
+        where: { address: vault.token_address }
+      });
+    }
+
+    // Prepare data for PDF generation
+    const vaultData = {
+      vault: vault.get({ plain: true }),
+      beneficiaries: vault.Beneficiaries || [],
+      subSchedules: vault.SubSchedules || [],
+      organization: vault.organization,
+      token: token
+    };
+
+    // Generate and stream PDF
+    await pdfService.streamVestingAgreement(vaultData, res);
+
+  } catch (error) {
+    console.error('Error generating vesting agreement:', error);
+
+    // If headers haven't been sent yet, send JSON error response
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    } else {
+      res.destroy(error);
+    }
+// Token distribution endpoint for pie chart data
+app.get('/api/token/:address/distribution', async (req, res) => {
+  try {
+    const { address } = req.params;
+    const { Vault } = require('./models');
+
+    // Get all vaults for this token address, grouped by tag
+    const distribution = await Vault.findAll({
+      attributes: [
+        'tag',
+        [sequelize.fn('SUM', sequelize.col('total_amount')), 'total_amount']
+      ],
+      where: {
+        token_address: address,
+        total_amount: {
+          [sequelize.Op.gt]: 0
+        }
+      },
+      group: ['tag'],
+      raw: true
+    });
+
+    // Format the response
+    const result = distribution
+      .filter(item => item.tag) // Filter out null tags
+      .map(item => ({
+        label: item.tag,
+        amount: parseFloat(item.total_amount)
+      }))
+      .sort((a, b) => b.amount - a.amount); // Sort by amount descending
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Error fetching token distribution:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
