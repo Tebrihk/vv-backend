@@ -97,6 +97,7 @@ const discordBotService = require('./services/discordBotService');
 const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
+const pdfService = require('./services/pdfService');
 
 
 app.get('/', (req, res) => {
@@ -325,6 +326,74 @@ app.get('/api/vaults/:id/export', async (req, res) => {
   }
 });
 
+// Vesting Agreement PDF endpoint
+app.get('/api/vault/:id/agreement.pdf', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { Vault, Beneficiary, SubSchedule, Organization, Token } = require('./models');
+
+    // Find vault with related data
+    const vault = await Vault.findOne({
+      where: { id },
+      include: [
+        {
+          model: Organization,
+          as: 'organization',
+          required: false
+        },
+        {
+          model: Beneficiary,
+          required: true
+        },
+        {
+          model: SubSchedule,
+          required: false
+        }
+      ]
+    });
+
+    if (!vault) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vault not found'
+      });
+    }
+
+    // Get token information (assuming token address maps to token model)
+    let token = null;
+    if (vault.token_address) {
+      token = await Token.findOne({
+        where: { address: vault.token_address }
+      });
+    }
+
+    // Prepare data for PDF generation
+    const vaultData = {
+      vault: vault.get({ plain: true }),
+      beneficiaries: vault.Beneficiaries || [],
+      subSchedules: vault.SubSchedules || [],
+      organization: vault.organization,
+      token: token
+    };
+
+    // Generate and stream PDF
+    await pdfService.streamVestingAgreement(vaultData, res);
+
+  } catch (error) {
+    console.error('Error generating vesting agreement:', error);
+
+    // If headers haven't been sent yet, send JSON error response
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    } else {
+      res.destroy(error);
+    }
+  }
+});
+
 // Sentry error handler must be before any other error middleware and after all controllers
 if (process.env.SENTRY_DSN && Sentry.Handlers) {
   app.use(Sentry.Handlers.errorHandler());
@@ -385,7 +454,7 @@ const startServer = async () => {
     } catch (jobError) {
       console.error('Failed to initialize Monthly Report Job:', jobError);
     }
-    
+
     // Start the HTTP server
     httpServer.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
