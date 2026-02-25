@@ -3,19 +3,48 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
 const { rateLimit } = require('express-rate-limit');
+const { walletRateLimitMiddleware } = require('./middleware/wallet-ratelimit.middleware');
 
+const Sentry = require('@sentry/node');
+const { nodeProfilingIntegration } = require('@sentry/profiling-node');
+
+// Import swagger documentation
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('./swagger/options');
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+
+Sentry.init({
+  // Fallback to a dummy DSN so Sentry SDK doesn't disable itself when testing without credentials
+  dsn: process.env.SENTRY_DSN || 'http://public_key@localhost:9999/1',
+  debug: true, // Output sentry operations to console (disable in production)
+  environment: process.env.NODE_ENV || 'development',
+  integrations: [
+    nodeProfilingIntegration(),
+  ],
+  tracesSampleRate: 1.0, // 100% of transactions for performance monitoring
+  profilesSampleRate: 1.0, // 100% of transactions are profiled
+});
+
+const PORT = process.env.PORT || 4000;
 
 const httpServer = http.createServer(app);
 
+// Sentry request handler must be the first middleware (only if Sentry is properly configured)
+if (process.env.SENTRY_DSN && Sentry.Handlers) {
+  app.use(Sentry.Handlers.requestHandler());
+  app.use(Sentry.Handlers.tracingHandler());
+}
+
+// Middleware
 app.use(cors());
 app.use(express.json());
+app.use(require('cookie-parser')());
+
+// Apply wallet-based rate limiting to all API routes
+app.use('/api', walletRateLimitMiddleware);
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
 
@@ -34,7 +63,19 @@ const { sequelize } = require('./database/connection');
 const models = require('./models');
 const { OrganizationWebhook } = models;
 // Register webhook URL for organization
-const { isAdminOfOrg } = require('./graphql/middleware/auth');
+// For now, let's create a simple isAdminOfOrg function inline
+const isAdminOfOrg = async (adminAddress, orgId) => {
+  if (!adminAddress || !orgId) return false;
+  try {
+    const org = await models.Organization.findOne({
+      where: { id: orgId, admin_address: adminAddress }
+    });
+    return !!org;
+  } catch (err) {
+    console.error('Error in isAdminOfOrg:', err);
+    return false;
+  }
+};
 // Register webhook URL for organization with admin/org check
 app.post('/api/admin/webhooks', async (req, res) => {
   try {
@@ -61,6 +102,12 @@ const discordBotService = require('./services/discordBotService');
 const cacheService = require('./services/cacheService');
 const tvlService = require('./services/tvlService');
 const vaultExportService = require('./services/vaultExportService');
+const authService = require('./services/authService');
+const notificationService = require('./services/notificationService');
+const pdfService = require('./services/pdfService');
+
+// Import webhooks routes
+const webhooksRoutes = require('./routes/webhooks');
 
 
 app.get('/', (req, res) => {
@@ -71,12 +118,156 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Authentication endpoints
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { address, signature } = req.body;
+
+    if (!address || !signature) {
+      return res.status(400).json({
+        success: false,
+        error: 'Address and signature are required'
+      });
+    }
+
+    // TODO: Verify signature with Ethereum message
+    // For now, we'll create tokens without signature verification
+    // In production, implement proper EIP-712 signature verification
+
+    const tokens = await authService.createTokens(address);
+
+    // Set refresh token in secure cookie
+    authService.setRefreshTokenCookie(res, tokens.refreshToken);
+
+    // Return access token in response (don't return refresh token)
+    res.json({
+      success: true,
+      data: {
+        accessToken: tokens.accessToken,
+        expiresIn: tokens.expiresIn,
+        tokenType: tokens.tokenType
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Login failed'
+    });
+  }
+});
+
+// POST /api/auth/refresh - Token refresh endpoint
+app.post('/api/auth/refresh', async (req, res) => {
+  try {
+    // Try to get refresh token from cookie first
+    let refreshToken = authService.getRefreshTokenFromCookie(req);
+
+    // If not in cookie, try request body
+    if (!refreshToken) {
+      refreshToken = req.body.refreshToken;
+    }
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        error: 'Refresh token required'
+      });
+    }
+
+    // Refresh tokens (this will revoke the old token and create new ones)
+    const newTokens = await authService.refreshTokens(refreshToken);
+
+    // Set new refresh token in secure cookie
+    authService.setRefreshTokenCookie(res, newTokens.refreshToken);
+
+    // Return new access token
+    res.json({
+      success: true,
+      data: {
+        accessToken: newTokens.accessToken,
+        expiresIn: newTokens.expiresIn,
+        tokenType: newTokens.tokenType
+      }
+    });
+  } catch (error) {
+    console.error('Token refresh error:', error);
+
+    // Clear invalid refresh token cookie
+    authService.clearRefreshTokenCookie(res);
+
+    res.status(401).json({
+      success: false,
+      error: error.message || 'Token refresh failed'
+    });
+  }
+});
+
+// POST /api/auth/logout - Logout endpoint
+app.post('/api/auth/logout', async (req, res) => {
+  try {
+    const token = authService.extractTokenFromHeader(req);
+
+    if (token) {
+      try {
+        const decoded = await authService.verifyAccessToken(token);
+        // Revoke all refresh tokens for this user
+        await authService.revokeAllUserTokens(decoded.address);
+      } catch (error) {
+        // Token might be invalid, but still clear cookie
+        console.log('Invalid token during logout:', error.message);
+      }
+    }
+
+    // Clear refresh token cookie
+    authService.clearRefreshTokenCookie(res);
+
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Logout failed'
+    });
+  }
+});
+
+// GET /api/auth/me - Get current user info
+app.get('/api/auth/me', authService.authenticate(), async (req, res) => {
+  try {
+    const user = req.user;
+
+    res.json({
+      success: true,
+      data: {
+        address: user.address,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Get user info error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get user info'
+    });
+  }
+});
+// Mount webhooks routes
+app.use('/webhooks', webhooksRoutes);
+
 app.post('/api/claims', claimRateLimiter, async (req, res) => {
   try {
     const claim = await indexingService.processClaim(req.body);
     res.status(201).json({ success: true, data: claim });
   } catch (error) {
     console.error('Error processing claim:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -87,17 +278,26 @@ app.post('/api/claims/batch', claimRateLimiter, async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error processing batch claims:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
 app.post('/api/claims/backfill-prices', claimRateLimiter, async (req, res) => {
   try {
     const processedCount = await indexingService.backfillMissingPrices();
-    res.json({ success: true, message: `Backfilled prices for ${processedCount} claims` });
+    res.json({
+      success: true,
+      message: `Backfilled prices for ${processedCount} claims`
+    });
   } catch (error) {
     console.error('Error backfilling prices:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
@@ -105,15 +305,20 @@ app.get('/api/claims/:userAddress/realized-gains', async (req, res) => {
   try {
     const { userAddress } = req.params;
     const { startDate, endDate } = req.query;
+
     const gains = await indexingService.getRealizedGains(
       userAddress,
       startDate ? new Date(startDate) : null,
       endDate ? new Date(endDate) : null
     );
+
     res.json({ success: true, data: gains });
   } catch (error) {
     console.error('Error calculating realized gains:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
@@ -124,6 +329,10 @@ app.post('/api/admin/revoke', async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error revoking access:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -135,6 +344,10 @@ app.post('/api/admin/create', async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error creating vault:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -146,6 +359,10 @@ app.post('/api/admin/transfer', async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error transferring vault:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -157,6 +374,10 @@ app.get('/api/admin/audit-logs', async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error fetching audit logs:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -168,6 +389,10 @@ app.post('/api/admin/propose-new-admin', async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error proposing new admin:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -179,6 +404,10 @@ app.post('/api/admin/accept-ownership', async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error accepting ownership:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -190,6 +419,10 @@ app.post('/api/admin/transfer-ownership', async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error transferring ownership:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -201,6 +434,10 @@ app.get('/api/admin/pending-transfers', async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Error fetching pending transfers:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -223,10 +460,109 @@ app.get('/api/stats/tvl', async (req, res) => {
   }
 });
 
+// Notification endpoints
+app.post('/api/notifications/register-device', async (req, res) => {
+  try {
+    const { userAddress, deviceToken, platform, appVersion } = req.body;
 
+    if (!userAddress || !deviceToken || !platform) {
+      return res.status(400).json({
+        success: false,
+        error: 'userAddress, deviceToken, and platform are required'
+      });
+    }
+
+    if (!['ios', 'android', 'web'].includes(platform)) {
+      return res.status(400).json({
+        success: false,
+        error: 'platform must be one of: ios, android, web'
+      });
+    }
+
+    const deviceTokenRecord = await notificationService.registerDeviceToken(
+      userAddress,
+      deviceToken,
+      platform,
+      appVersion
+    );
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: deviceTokenRecord.id,
+        userAddress: deviceTokenRecord.user_address,
+        platform: deviceTokenRecord.platform,
+        registeredAt: deviceTokenRecord.created_at
+      }
+    });
+  } catch (error) {
+    console.error('Error registering device token:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.delete('/api/notifications/unregister-device', async (req, res) => {
+  try {
+    const { deviceToken } = req.body;
+
+    if (!deviceToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'deviceToken is required'
+      });
+    }
+
+    const success = await notificationService.unregisterDeviceToken(deviceToken);
+
+    res.json({
+      success: true,
+      data: { unregistered: success }
+    });
+  } catch (error) {
+    console.error('Error unregistering device token:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/notifications/devices/:userAddress', async (req, res) => {
+  try {
+    const { userAddress } = req.params;
+
+    const deviceTokens = await notificationService.getUserDeviceTokens(userAddress);
+
+    res.json({
+      success: true,
+      data: deviceTokens.map(token => ({
+        id: token.id,
+        platform: token.platform,
+        appVersion: token.app_version,
+        lastUsedAt: token.last_used_at,
+        registeredAt: token.created_at
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching user device tokens:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/vaults/:id/export', async (req, res) => {
+  try {
+    const { id } = req.params;
     await vaultExportService.streamVaultAsCSV(id, res);
   } catch (error) {
     console.error('Error exporting vault:', error);
+
+    // If headers haven't been sent yet, send JSON error response
     if (!res.headersSent) {
       res.status(500).json({ success: false, error: error.message });
     } else {
@@ -235,11 +571,130 @@ app.get('/api/stats/tvl', async (req, res) => {
   }
 });
 
+// Vesting Agreement PDF endpoint
+app.get('/api/vault/:id/agreement.pdf', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { Vault, Beneficiary, SubSchedule, Organization, Token } = require('./models');
+
+    // Find vault with related data
+    const vault = await Vault.findOne({
+      where: { id },
+      include: [
+        {
+          model: Organization,
+          as: 'organization',
+          required: false
+        },
+        {
+          model: Beneficiary,
+          required: true
+        },
+        {
+          model: SubSchedule,
+          required: false
+        }
+      ]
+    });
+
+    if (!vault) {
+      return res.status(404).json({
+        success: false,
+        error: 'Vault not found'
+      });
+    }
+
+    // Get token information (assuming token address maps to token model)
+    let token = null;
+    if (vault.token_address) {
+      token = await Token.findOne({
+        where: { address: vault.token_address }
+      });
+    }
+
+    // Prepare data for PDF generation
+    const vaultData = {
+      vault: vault.get({ plain: true }),
+      beneficiaries: vault.Beneficiaries || [],
+      subSchedules: vault.SubSchedules || [],
+      organization: vault.organization,
+      token: token
+    };
+
+    // Generate and stream PDF
+    await pdfService.streamVestingAgreement(vaultData, res);
+
+  } catch (error) {
+    console.error('Error generating vesting agreement:', error);
+
+    // If headers haven't been sent yet, send JSON error response
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    } else {
+      res.destroy(error);
+    }
+// Token distribution endpoint for pie chart data
+app.get('/api/token/:address/distribution', async (req, res) => {
+  try {
+    const { address } = req.params;
+    const { Vault } = require('./models');
+
+    // Get all vaults for this token address, grouped by tag
+    const distribution = await Vault.findAll({
+      attributes: [
+        'tag',
+        [sequelize.fn('SUM', sequelize.col('total_amount')), 'total_amount']
+      ],
+      where: {
+        token_address: address,
+        total_amount: {
+          [sequelize.Op.gt]: 0
+        }
+      },
+      group: ['tag'],
+      raw: true
+    });
+
+    // Format the response
+    const result = distribution
+      .filter(item => item.tag) // Filter out null tags
+      .map(item => ({
+        label: item.tag,
+        amount: parseFloat(item.total_amount)
+      }))
+      .sort((a, b) => b.amount - a.amount); // Sort by amount descending
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Error fetching token distribution:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Sentry error handler must be before any other error middleware and after all controllers
+if (process.env.SENTRY_DSN && Sentry.Handlers) {
+  app.use(Sentry.Handlers.errorHandler());
+}
+
+// Start server
 const startServer = async () => {
   try {
     await sequelize.authenticate();
     console.log('Database connection established successfully.');
 
+    await sequelize.sync();
+    console.log('Database synchronized successfully.');
+
+    // Initialize Redis Cache
     console.log('Database synchronized successfully.');
 
     try {
@@ -254,11 +709,15 @@ const startServer = async () => {
       console.log('Continuing without Redis cache...');
     }
 
+    // Initialize GraphQL Server
     let graphQLServer = null;
     try {
-      const { createGraphQLServer } = require('./graphql/server');
-      graphQLServer = await createGraphQLServer(app);
+      const { GraphQLServer } = require('./graphql/server');
+      graphQLServer = new GraphQLServer(app, httpServer);
+      await graphQLServer.start();
+      await graphQLServer.applyMiddleware(app);
       console.log('GraphQL Server initialized successfully.');
+
       const serverInfo = graphQLServer.getServerInfo();
       console.log(`GraphQL Playground available at: ${serverInfo.playgroundUrl}`);
       console.log(`GraphQL Subscriptions available at: ${serverInfo.subscriptionEndpoint}`);
@@ -267,6 +726,7 @@ const startServer = async () => {
       console.log('Continuing with REST API only...');
     }
 
+    // Initialize Discord Bot
     try {
       await discordBotService.start();
     } catch (discordError) {
@@ -279,6 +739,15 @@ const startServer = async () => {
       monthlyReportJob.start();
     } catch (jobError) {
       console.error('Failed to initialize Monthly Report Job:', jobError);
+    }
+
+    // Initialize Notification Service (includes cliff notification cron job)
+    try {
+      notificationService.start();
+      console.log('Notification service started successfully.');
+    } catch (notificationError) {
+      console.error('Failed to initialize Notification Service:', notificationError);
+      console.log('Continuing without notification cron job...');
     }
     
     // Start the HTTP server

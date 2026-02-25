@@ -1,8 +1,18 @@
-import { gql } from 'apollo-server';
-
-export const typeDefs = gql`
+export const typeDefs = `
   scalar DateTime
   scalar Decimal
+
+  type Organization {
+    id: ID!
+    name: String!
+    logoUrl: String
+    websiteUrl: String
+    discordUrl: String
+    adminAddress: String!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+    vaults: [Vault!]!
+  }
 
   type Vault {
     id: ID!
@@ -11,11 +21,13 @@ export const typeDefs = gql`
     tokenAddress: String!
     ownerAddress: String!
     totalAmount: Decimal!
+    orgId: ID
     createdAt: DateTime!
     updatedAt: DateTime!
     beneficiaries: [Beneficiary!]!
     subSchedules: [SubSchedule!]!
     summary: VaultSummary
+    organization: Organization
   }
 
   type Beneficiary {
@@ -154,9 +166,14 @@ export const typeDefs = gql`
   }
 
   type Query {
+    # Organization queries
+    organization(id: ID!): Organization
+    organizationByAdmin(adminAddress: String!): Organization
+    organizations(adminAddress: String, first: Int, after: String): [Organization!]!
+
     # Vault queries
-    vault(address: String!): Vault
-    vaults(ownerAddress: String, first: Int, after: String): [Vault!]!
+    vault(address: String!, orgId: ID, adminAddress: String): Vault
+    vaults(orgId: ID, adminAddress: String, first: Int, after: String): [Vault!]!
     vaultSummary(vaultAddress: String!): VaultSummary
     
     # Beneficiary queries
@@ -167,6 +184,9 @@ export const typeDefs = gql`
     claims(userAddress: String, tokenAddress: String, first: Int, after: String): [ClaimsHistory!]!
     claim(transactionHash: String!): ClaimsHistory
     realizedGains(userAddress: String!, startDate: DateTime, endDate: DateTime): RealizedGains!
+    
+    # TVL queries
+    tvlStats: TVLStats!
     
     # Admin queries
     auditLogs(limit: Int): [AuditLog!]!
@@ -200,6 +220,13 @@ export const typeDefs = gql`
     transferOwnership(input: CreateAdminTransferInput!): AdminTransfer!
   }
 
+  type TVLStats {
+    totalValueLocked: Decimal!
+    activeVaultsCount: Int!
+    formattedTvl: String!
+    lastUpdatedAt: DateTime!
+  }
+
   type Subscription {
     # Real-time subscriptions
     vaultUpdated(vaultAddress: String): Vault!
@@ -207,6 +234,9 @@ export const typeDefs = gql`
     newClaim(userAddress: String): ClaimsHistory!
     withdrawalProcessed(vaultAddress: String, beneficiaryAddress: String): WithdrawableInfo!
     auditLogCreated: AuditLog!
+    
+    # TVL real-time updates
+    tvlUpdated: TVLStats!
     
     # Admin subscriptions
     adminTransferUpdated(contractAddress: String): AdminTransfer!

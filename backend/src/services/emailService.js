@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { Beneficiary } = require('../models');
 
 class EmailService {
   constructor() {
@@ -24,6 +25,16 @@ class EmailService {
     try {
       if (!to) {
         console.warn('No recipient email provided, skipping email notification');
+        return false;
+      }
+
+      // Check if email is marked as invalid (bounced)
+      const beneficiary = await Beneficiary.findOne({
+        where: { email: to }
+      });
+
+      if (beneficiary && !beneficiary.email_valid) {
+        console.warn(`Email ${to} is marked as invalid (bounced), skipping email notification`);
         return false;
       }
 
@@ -58,7 +69,7 @@ class EmailService {
     const subject = 'Your Cliff has passed!';
     const text = `Your Cliff has passed! You can now claim ${parseFloat(amount).toLocaleString()} tokens.`;
     const html = `<p>Your Cliff has passed! You can now claim <strong>${parseFloat(amount).toLocaleString()}</strong> tokens.</p>`;
-    
+
     return await this.sendEmail(to, subject, text, html);
   }
 }

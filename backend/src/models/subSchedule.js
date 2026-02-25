@@ -28,7 +28,9 @@ const SubSchedule = sequelize.define('SubSchedule', {
     allowNull: false,
   },
   cliff_duration: {
-
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'Cliff duration in seconds',
   },
   cliff_date: {
     type: DataTypes.DATE,
@@ -41,6 +43,33 @@ const SubSchedule = sequelize.define('SubSchedule', {
   vesting_duration: {
     type: DataTypes.INTEGER,
     allowNull: false,
+    comment: 'Vesting duration in seconds',
+  },
+  start_timestamp: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    comment: 'When vesting starts',
+  },
+  end_timestamp: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    comment: 'When vesting ends',
+  },
+  transaction_hash: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: 'Transaction hash for this top-up',
+  },
+  block_number: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    comment: 'Block number for this top-up',
+  },
+  amount_withdrawn: {
+    type: DataTypes.DECIMAL(36, 18),
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Amount withdrawn from this sub-schedule',
   },
   amount_released: {
     type: DataTypes.DECIMAL(36, 18),

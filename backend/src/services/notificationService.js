@@ -1,6 +1,7 @@
-const { Vault, SubSchedule, Beneficiary, Notification, sequelize } = require('../models');
+const { Vault, SubSchedule, Beneficiary, Notification, DeviceToken, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const emailService = require('./emailService');
+const firebaseService = require('./firebaseService');
 const cron = require('node-cron');
 
 class NotificationService {
@@ -107,11 +108,41 @@ class NotificationService {
       });
 
       if (!existingNotification) {
-        console.log(`Sending ${type} email to ${beneficiary.email} for vault ${vault.vault_address}`);
+        console.log(`Sending ${type} notifications to beneficiary ${beneficiary.email || beneficiary.id} for vault ${vault.vault_address}`);
         
-        const emailSent = await emailService.sendCliffPassedEmail(beneficiary.email, amount);
+        let emailSent = false;
+        let pushSent = false;
+
+        // Send email notification if email is available
+        if (beneficiary.email) {
+          emailSent = await emailService.sendCliffPassedEmail(beneficiary.email, amount);
+        }
+
+        // Send push notification if device tokens are available
+        const deviceTokens = await DeviceToken.findAll({
+          where: {
+            user_address: vault.owner_address, // Assuming owner_address is the beneficiary
+            is_active: true
+          }
+        });
+
+        if (deviceTokens.length > 0 && firebaseService.isInitialized()) {
+          try {
+            const tokens = deviceTokens.map(dt => dt.device_token);
+            const pushResponse = await firebaseService.sendCliffPassedNotification(
+              tokens, 
+              amount, 
+              vault.token_symbol || 'tokens'
+            );
+            pushSent = pushResponse.successCount > 0;
+            console.log(`Push notifications sent to ${pushResponse.successCount}/${tokens.length} devices`);
+          } catch (pushError) {
+            console.error('Error sending push notifications:', pushError);
+          }
+        }
         
-        if (emailSent) {
+        // Record notification if at least one method succeeded
+        if (emailSent || pushSent || deviceTokens.length === 0) {
           await Notification.create({
             beneficiary_id: beneficiary.id,
             vault_id: vault.id,
@@ -120,7 +151,7 @@ class NotificationService {
             sent_at: new Date()
           }, { transaction });
           
-          console.log(`Notification recorded in DB for ${beneficiary.email}`);
+          console.log(`Notification recorded in DB for beneficiary ${beneficiary.email || beneficiary.id}`);
         }
       }
 
@@ -128,6 +159,89 @@ class NotificationService {
     } catch (error) {
       await transaction.rollback();
       console.error(`Failed to process notification for beneficiary ${beneficiary.id}:`, error);
+    }
+  }
+
+  /**
+   * Register a device token for push notifications
+   * @param {string} userAddress - User's wallet address
+   * @param {string} deviceToken - FCM device token
+   * @param {string} platform - Device platform (ios, android, web)
+   * @param {string} appVersion - App version (optional)
+   * @returns {Promise<Object>} - Created or updated device token record
+   */
+  async registerDeviceToken(userAddress, deviceToken, platform, appVersion = null) {
+    try {
+      // Check if token already exists
+      const existingToken = await DeviceToken.findOne({
+        where: { device_token: deviceToken }
+      });
+
+      if (existingToken) {
+        // Update existing token
+        await existingToken.update({
+          user_address: userAddress,
+          platform,
+          app_version: appVersion,
+          is_active: true,
+          last_used_at: new Date()
+        });
+        console.log(`Updated existing device token for user ${userAddress}`);
+        return existingToken;
+      } else {
+        // Create new token
+        const newToken = await DeviceToken.create({
+          user_address: userAddress,
+          device_token: deviceToken,
+          platform,
+          app_version: appVersion,
+          is_active: true
+        });
+        console.log(`Registered new device token for user ${userAddress}`);
+        return newToken;
+      }
+    } catch (error) {
+      console.error('Error registering device token:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Unregister a device token
+   * @param {string} deviceToken - FCM device token to unregister
+   * @returns {Promise<boolean>} - Success status
+   */
+  async unregisterDeviceToken(deviceToken) {
+    try {
+      const result = await DeviceToken.update(
+        { is_active: false },
+        { where: { device_token: deviceToken } }
+      );
+      console.log(`Unregistered device token: ${deviceToken}`);
+      return result[0] > 0;
+    } catch (error) {
+      console.error('Error unregistering device token:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get active device tokens for a user
+   * @param {string} userAddress - User's wallet address
+   * @returns {Promise<Array>} - Array of active device tokens
+   */
+  async getUserDeviceTokens(userAddress) {
+    try {
+      return await DeviceToken.findAll({
+        where: {
+          user_address: userAddress,
+          is_active: true
+        },
+        order: [['last_used_at', 'DESC']]
+      });
+    } catch (error) {
+      console.error('Error fetching user device tokens:', error);
+      throw error;
     }
   }
 }
