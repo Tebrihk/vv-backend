@@ -9,6 +9,7 @@
     "test:integration": "node test-pagination.js"
   },
   "dependencies": {
+    "@apollo/server": "^5.4.0",
     "@nestjs/platform-socket.io": "^11.1.14",
     "@nestjs/websockets": "^11.1.14",
     "cors": "^2.8.6",

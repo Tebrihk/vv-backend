@@ -4,16 +4,20 @@ const tvlService = require('../../services/tvlService');
 
 export const vaultResolver = {
   Query: {
-    vault: async (_: any, { address, orgId, adminAddress }: { address: string, orgId: string, adminAddress: string }) => {
+    vault: async (_: any, { address, orgId, adminAddress }: { address: string, orgId?: string, adminAddress?: string }) => {
       try {
-        // Enforce org/admin check
-        const { isAdminOfOrg } = require('../middleware/auth');
-        const isAdmin = await isAdminOfOrg(adminAddress, orgId);
-        if (!isAdmin) {
-          throw new Error('Access denied: admin does not belong to organization.');
+        const whereClause: Record<string, unknown> = { address };
+        if (orgId && adminAddress) {
+          const { isAdminOfOrg } = require('../middleware/auth');
+          const isAdmin = await isAdminOfOrg(adminAddress, orgId);
+          if (!isAdmin) {
+            throw new Error('Access denied: admin does not belong to organization.');
+          }
+          whereClause.org_id = orgId;
         }
+
         const vault = await models.Vault.findOne({
-          where: { address, org_id: orgId },
+          where: whereClause,
           include: [
             {
               model: models.Beneficiary,
@@ -32,15 +36,17 @@ export const vaultResolver = {
       }
     },
 
-    vaults: async (_: any, { orgId, adminAddress, first = 50, after }: { orgId: string, adminAddress: string, first?: number, after?: string }) => {
+    vaults: async (_: any, { orgId, adminAddress, first = 50, after }: { orgId?: string, adminAddress?: string, first?: number, after?: string }) => {
       try {
-        // Enforce org/admin check
+        if (!orgId || !adminAddress) {
+          throw new Error('orgId and adminAddress are required to list vaults.');
+        }
         const { isAdminOfOrg } = require('../middleware/auth');
         const isAdmin = await isAdminOfOrg(adminAddress, orgId);
         if (!isAdmin) {
           throw new Error('Access denied: admin does not belong to organization.');
         }
-        const offset = after ? parseInt(after) : 0;
+        const offset = after ? parseInt(after, 10) : 0;
         const vaults = await models.Vault.findAll({
           where: { org_id: orgId },
           include: [
@@ -184,6 +190,16 @@ export const vaultResolver = {
   },
 
   Vault: {
+    orgId: (vault: any) => vault?.org_id ?? null,
+    organization: async (vault: any) => {
+      if (!vault?.org_id) return null;
+      try {
+        return await models.Organization.findByPk(vault.org_id);
+      } catch (error) {
+        console.error('Error fetching organization for vault:', error);
+        return null;
+      }
+    },
     beneficiaries: async (vault: any) => {
       try {
         return await models.Beneficiary.findAll({
