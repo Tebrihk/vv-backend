@@ -105,6 +105,8 @@ const vaultExportService = require('./services/vaultExportService');
 const authService = require('./services/authService');
 const notificationService = require('./services/notificationService');
 const pdfService = require('./services/pdfService');
+const monthlyReportJob = require('./jobs/monthlyReportJob');
+const { VaultReconciliationJob } = require('./jobs/vaultReconciliationJob');
 
 // Import webhooks routes
 const webhooksRoutes = require('./routes/webhooks');
@@ -739,6 +741,16 @@ const startServer = async () => {
       monthlyReportJob.start();
     } catch (jobError) {
       console.error('Failed to initialize Monthly Report Job:', jobError);
+    }
+
+    // Initialize Vault Reconciliation Job
+    const vaultReconciliationJob = new VaultReconciliationJob();
+    try {
+      vaultReconciliationJob.start();
+      console.log('Vault Reconciliation Job started successfully.');
+    } catch (jobError) {
+      console.error('Failed to initialize Vault Reconciliation Job:', jobError);
+      console.log('Continuing without vault reconciliation...');
     }
 
     // Initialize Notification Service (includes cliff notification cron job)
