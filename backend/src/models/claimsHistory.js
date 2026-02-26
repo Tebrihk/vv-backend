@@ -67,4 +67,13 @@ const ClaimsHistory = sequelize.define('ClaimsHistory', {
   ],
 });
 
+// Add association method
+ClaimsHistory.associate = function (models) {
+  ClaimsHistory.belongsTo(models.Token, {
+    foreignKey: 'token_address',
+    sourceKey: 'address',
+    as: 'token'
+  });
+};
+
 module.exports = ClaimsHistory;

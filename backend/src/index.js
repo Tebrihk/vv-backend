@@ -110,6 +110,7 @@ const { VaultReconciliationJob } = require('./jobs/vaultReconciliationJob');
 
 // Import webhooks routes
 const webhooksRoutes = require('./routes/webhooks');
+const organizationRoutes = require('./routes/organization');
 
 
 app.get('/', (req, res) => {
@@ -259,6 +260,9 @@ app.get('/api/auth/me', authService.authenticate(), async (req, res) => {
 });
 // Mount webhooks routes
 app.use('/webhooks', webhooksRoutes);
+
+// Mount organization routes
+app.use('/api/org', organizationRoutes);
 
 app.post('/api/claims', claimRateLimiter, async (req, res) => {
   try {
