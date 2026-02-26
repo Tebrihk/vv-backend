@@ -61,6 +61,15 @@ class CacheService {
   }
 
   /**
+   * Generate cache key for user portfolio
+   * @param {string} address - User address
+   * @returns {string} Cache key
+   */
+  getUserPortfolioKey(address) {
+    return `user_portfolio:${address}`;
+  }
+
+  /**
    * Get value from cache
    * @param {string} key - Cache key
    * @returns {Promise<any>} Cached value or null
@@ -152,6 +161,16 @@ class CacheService {
    */
   async invalidateUserVaults(address) {
     const key = this.getUserVaultsKey(address);
+    return await this.del(key);
+  }
+
+  /**
+   * Invalidate user portfolio cache for a specific address
+   * @param {string} address - User address
+   * @returns {Promise<boolean>} Success status
+   */
+  async invalidateUserPortfolio(address) {
+    const key = this.getUserPortfolioKey(address);
     return await this.del(key);
   }
 

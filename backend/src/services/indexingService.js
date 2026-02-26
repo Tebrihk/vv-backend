@@ -2,6 +2,7 @@ const { ClaimsHistory, Vault, SubSchedule } = require('../models');
 const priceService = require('./priceService');
 const slackWebhookService = require('./slackWebhookService');
 const tvlService = require('./tvlService');
+const cacheService = require('./cacheService');
 const Sentry = require('@sentry/node');
 
 const EventEmitter = require('events');
@@ -56,6 +57,15 @@ class IndexingService {
 
       // Emit internal claim event for WebSocket gateway
       claimEventEmitter.emit('claim', claim.toJSON());
+
+      // Invalidate user portfolio cache after claim processing
+      try {
+        await cacheService.invalidateUserPortfolio(user_address);
+        console.log(`Invalidated portfolio cache for user ${user_address}`);
+      } catch (cacheError) {
+        console.error('Error invalidating portfolio cache:', cacheError);
+        // Don't throw - cache invalidation failure shouldn't fail claim processing
+      }
 
       // Fire webhook POST for DAOs, but only if admin_address matches organization_id
       const { OrganizationWebhook } = require('../models');
